@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using OnlineEgitim.Business;
 using OnlineEgitim.Business.Services;
+using OnlineEgitim.Business.Validation;
 using OnlineEgitim.Domain.Entities;
 using static OnlineEgitim.Data.Tests.TestServices;
 
@@ -160,7 +161,7 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         var spaces = await Assert.ThrowsAsync<BusinessRuleException>(() => Auth.SignInStudentAsync("Mert Deneme", "   ", Ct));
         var any = await Assert.ThrowsAsync<BusinessRuleException>(() => Auth.SignInStudentAsync("Mert Deneme", "herhangi", Ct));
 
-        Assert.Equal(AuthService.InputRequired, empty.Message);
+        Assert.Equal(ValidationMessages.InputRequired, empty.Message);
         Assert.Equal(AuthService.CredentialsInvalid, spaces.Message);
         Assert.Equal(AuthService.CredentialsInvalid, any.Message);
     }

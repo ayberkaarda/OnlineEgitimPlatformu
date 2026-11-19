@@ -1,4 +1,4 @@
-using System.Globalization;
+using FluentValidation;
 using OnlineEgitim.Business.Auditing;
 using OnlineEgitim.Business.Validation;
 using OnlineEgitim.Domain.Entities;
@@ -50,23 +50,10 @@ internal sealed class CourseService(
     ICourseRepository courses,
     IEnrollmentRepository enrollments,
     IAccountRepository accounts,
-    IAuditLog audit) : ICourseService
+    IAuditLog audit,
+    IValidator<CourseInput> courseValidator,
+    IValidator<NoteInput> noteValidator) : ICourseService
 {
-    internal const string FieldsRequired = "Lütfen tüm alanları doldurun.";
-    internal const string NoteRequired = "Lütfen bir kurs seçin ve not içeriğini girin.";
-
-    internal static readonly string NameTooLong = string.Create(
-        CultureInfo.InvariantCulture,
-        $"Kurs adı en fazla {InputRules.CourseNameMaxLength} karakter olabilir.");
-
-    internal static readonly string TopicTooLong = string.Create(
-        CultureInfo.InvariantCulture,
-        $"Konu en fazla {InputRules.TopicMaxLength} karakter olabilir.");
-
-    internal static readonly string NoteTooLong = string.Create(
-        CultureInfo.InvariantCulture,
-        $"Not en fazla {InputRules.NoteMaxLength} karakter olabilir.");
-
     public Task<IReadOnlyList<CourseSummary>> GetCatalogAsync(UserSession session, CancellationToken cancellationToken = default)
     {
         Access.RequireRole(session, AccountRole.Student, audit);
@@ -119,25 +106,11 @@ internal sealed class CourseService(
     {
         Access.RequireRole(session, AccountRole.Teacher, audit);
 
-        var courseName = InputRules.Clean(name);
-        var courseTopic = InputRules.Clean(topic);
-        if (courseName is null || courseTopic is null)
-        {
-            throw new BusinessRuleException(FieldsRequired);
-        }
-
-        if (!InputRules.IsValidText(courseName, InputRules.CourseNameMaxLength))
-        {
-            throw new BusinessRuleException(NameTooLong);
-        }
-
-        if (!InputRules.IsValidText(courseTopic, InputRules.TopicMaxLength))
-        {
-            throw new BusinessRuleException(TopicTooLong);
-        }
+        var input = CourseInput.Create(name, topic);
+        courseValidator.ValidateOrThrow(input);
 
         var id = await courses.AddAsync(
-            new Course { Name = courseName, Topic = courseTopic, TeacherId = session.UserId },
+            new Course { Name = input.Name!, Topic = input.Topic, TeacherId = session.UserId },
             cancellationToken).ConfigureAwait(false);
         audit.Record(AuditEvent.CourseCreated, AccountRole.Teacher);
         return id;
@@ -147,16 +120,9 @@ internal sealed class CourseService(
     {
         Access.RequireRole(session, AccountRole.Teacher, audit);
 
-        var text = InputRules.Clean(content);
-        if (courseId <= 0 || text is null)
-        {
-            throw new BusinessRuleException(NoteRequired);
-        }
-
-        if (!InputRules.IsValidMultilineText(text, InputRules.NoteMaxLength))
-        {
-            throw new BusinessRuleException(NoteTooLong);
-        }
+        var input = NoteInput.Create(courseId, content);
+        noteValidator.ValidateOrThrow(input);
+        var text = input.Content!;
 
         // Ownership is checked inside the repository's transaction; a missing and a foreign course
         // get the same answer.

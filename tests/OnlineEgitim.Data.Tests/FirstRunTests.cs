@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using OnlineEgitim.Business;
 using OnlineEgitim.Business.Services;
+using OnlineEgitim.Business.Validation;
 using OnlineEgitim.Data.Persistence;
 using OnlineEgitim.Domain.Entities;
 
@@ -47,8 +48,8 @@ public sealed class FirstRunTests
             () => setup.CreateFirstTeacherAsync(null, "Ada Kurucu", "Matematik", "kisa", "kisa", Ct));
         var session = await setup.CreateFirstTeacherAsync(null, " Ada Kurucu ", " Matematik ", "Gizli.Sifre1", "Gizli.Sifre1", Ct);
 
-        Assert.Equal(SetupService.PasswordsDoNotMatch, mismatch.Message);
-        Assert.Equal(AuthService.PasswordInvalid, weak.Message);
+        Assert.Equal(ValidationMessages.PasswordsDoNotMatch, mismatch.Message);
+        Assert.Equal(ValidationMessages.PasswordInvalid, weak.Message);
         Assert.True(session.IsTeacher);
         Assert.False(await setup.IsSetupRequiredAsync(Ct));
         Assert.Equal(SetupStage.Completed, await setup.GetStageAsync(Ct));

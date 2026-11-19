@@ -1,8 +1,10 @@
+using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using OnlineEgitim.Business.Auditing;
 using OnlineEgitim.Business.Security;
 using OnlineEgitim.Business.Services;
+using OnlineEgitim.Business.Validation;
 
 namespace OnlineEgitim.Business;
 
@@ -19,6 +21,13 @@ public static class BusinessServiceCollectionExtensions
         services.TryAddSingleton(_ => SetupKeyEnvironment.FromProcess());
         services.TryAddSingleton(SetupKeyThrottle.Default);
         services.TryAddSingleton<SetupKeyGate>();
+        services.AddSingleton<IValidator<RegistrationInput>, RegistrationInputValidator>();
+        services.AddSingleton<IValidator<SignInInput>, SignInInputValidator>();
+        services.AddSingleton<IValidator<FirstTeacherInput>, FirstTeacherInputValidator>();
+        services.AddSingleton<IValidator<NewPasswordInput>, NewPasswordInputValidator>();
+        services.AddSingleton<IValidator<StudentNameInput>, StudentNameInputValidator>();
+        services.AddSingleton<IValidator<CourseInput>, CourseInputValidator>();
+        services.AddSingleton<IValidator<NoteInput>, NoteInputValidator>();
         services.AddSingleton<IAuthService, AuthService>();
         services.AddSingleton<ISetupService, SetupService>();
         services.AddSingleton<IRecoveryService, RecoveryService>();

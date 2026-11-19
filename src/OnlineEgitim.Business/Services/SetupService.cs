@@ -1,3 +1,4 @@
+using FluentValidation;
 using OnlineEgitim.Business.Auditing;
 using OnlineEgitim.Business.Security;
 using OnlineEgitim.Business.Validation;
@@ -52,17 +53,15 @@ internal sealed class SetupService(
     IPasswordHasher passwordHasher,
     SetupKeyGate setupKeys,
     SetupKeyEnvironment environment,
-    IAuditLog audit) : ISetupService
+    IAuditLog audit,
+    IValidator<FirstTeacherInput> validator) : ISetupService
 {
     internal const string SetupKeyInvalid = "Kurulum anahtarı hatalı, süresi dolmuş veya daha önce kullanılmış.";
     internal const string SetupKeyRequired =
         "Bu veritabanında öğrenci hesapları olduğu için ilk öğretmen hesabı yalnızca kurulum anahtarıyla oluşturulabilir.";
     internal const string SetupKeyNotAllowed =
         "Şifreyle giriş yapabilen bir öğretmen hesabı olduğu için kurulum anahtarı kabul edilmez.";
-    internal const string FieldsRequired = "Lütfen tüm alanları doldurun.";
-    internal const string PasswordsDoNotMatch = "Şifreler uyuşmuyor.";
     internal const string AlreadyDone = "Kurulum zaten tamamlanmış. Lütfen giriş yapın.";
-    internal const string SpecialtyInvalid = "Uzmanlık alanı en fazla 100 karakter olabilir.";
 
     public async Task<bool> IsSetupRequiredAsync(CancellationToken cancellationToken = default) =>
         !await accounts.AnyAccountAsync(cancellationToken).ConfigureAwait(false);
@@ -80,39 +79,17 @@ internal sealed class SetupService(
         string? passwordRepeat,
         CancellationToken cancellationToken = default)
     {
-        var name = InputRules.Clean(fullName);
-        var field = InputRules.Clean(specialty);
-        if (name is null || field is null || string.IsNullOrWhiteSpace(password))
-        {
-            throw new BusinessRuleException(FieldsRequired);
-        }
-
-        if (!InputRules.IsValidPersonName(name))
-        {
-            throw new BusinessRuleException(AuthService.NameInvalid);
-        }
-
-        if (!InputRules.IsValidText(field, InputRules.SpecialtyMaxLength))
-        {
-            throw new BusinessRuleException(SpecialtyInvalid);
-        }
-
-        if (!string.Equals(password, passwordRepeat, StringComparison.Ordinal))
-        {
-            throw new BusinessRuleException(PasswordsDoNotMatch);
-        }
-
-        if (password.Length is < PasswordPolicy.MinLength or > PasswordPolicy.MaxLength)
-        {
-            throw new BusinessRuleException(AuthService.PasswordInvalid);
-        }
+        var input = FirstTeacherInput.Create(fullName, specialty, password, passwordRepeat);
+        validator.ValidateOrThrow(input);
+        var name = input.FullName!;
+        var field = input.Specialty!;
 
         var attempt = setupKeys.CreateAttempt(setupKey);
         var teacher = new Teacher
         {
             FullName = name,
             Specialty = field,
-            PasswordHash = passwordHasher.Hash(password),
+            PasswordHash = passwordHasher.Hash(input.Password!),
             PasswordFormat = PasswordFormat.Pbkdf2,
         };
 
