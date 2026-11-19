@@ -7,7 +7,8 @@ Protection Law (KVKK, Law No. 6698). This document lists technical measures only
 
 ## Scope and assets
 
-- **Application:** a Windows Forms client with student and teacher sign-in that talks directly to SQL Server.
+- **Application:** a Windows Forms client with student, teacher and administrator sign-in that talks directly to
+  SQL Server.
 - **Assets:**
   - Names and e-mail addresses of students, names and specialties of teachers.
   - Passwords and their stored hashes; recovery codes and setup keys and their hashes.
@@ -41,7 +42,9 @@ Protection Law (KVKK, Law No. 6698). This document lists technical measures only
 | Plain text passwords of the original application | The legacy upgrade marks them `LegacyPlainText`; the first successful sign-in replaces each with a PBKDF2 hash in the same conditional update | Partly mitigated (see residual risks) |
 | Accounts the original application left without a password | They are marked `None` and never sign in, whatever is typed (also an empty password); they get a first password only through a verified recovery | Mitigated |
 | Online password guessing | 5 failed attempts lock the account for 15 minutes; the counter is increased in one atomic `UPDATE`, attempts during a lock neither count nor extend it, and a success is written only while the account is still unlocked and unchanged, so a concurrent failure cannot be cleared | Mitigated |
-| Account enumeration through sign-in answers, timing or the log | Unknown accounts, wrong passwords, locked accounts and accounts without a password get the same message and the same audit code, and each costs one key derivation | Mitigated |
+| Account enumeration through sign-in answers, timing or the log | Unknown accounts, wrong passwords, locked, disabled accounts and accounts without a password get the same message and the same audit code, and each costs one key derivation | Mitigated |
+| A disabled, demoted or reset account keeping its open session | Every service call checks the session against the database (role, disabled flag, session version) before it reads or writes; disabling, demoting, a reset with a code and a password change increase the session version, so every open session ends with one "session ended" message (tests `DemotedAdminSession_CannotManageUsers`, `DeactivatedTeacherSession_CannotEditCourses`). A sign-in whose account is disabled after the password check is refused by the success write (SQL Server test) | Mitigated |
+| Password change used to guess the current password | A wrong current password counts towards the same lockout as a sign-in; every refusal has one message and costs one verification | Mitigated |
 | Account enumeration through registration | A name or e-mail address that is taken ends like a new registration (a hash is derived on both paths, no account is created or changed) | Mitigated (a later sign-in with the newcomer's own password still fails) |
 | Lockout used to block a known account | The lock ends by itself after 15 minutes; no permanent lock exists | Accepted |
 
@@ -50,6 +53,12 @@ Protection Law (KVKK, Law No. 6698). This document lists technical measures only
 | Threat | Mitigation | Status |
 |---|---|---|
 | A student calling teacher operations or the reverse | Every service call takes the session issued by `AuthService` (its constructor is internal) and checks the role first; a wrong role is refused and audited as `access.denied` | Mitigated |
+| Account management by a non-administrator | The administration service checks the Admin role and the session against the database before any repository; course views refuse administrators, whose ids are staff ids and are never compared with student ids | Mitigated |
+| Becoming an administrator without the owner | The application has no promotion path. `docs/promote-admin.sql` runs only for `db_owner`, and the trigger `TR_Egitmenler_Rol` refuses raising a role, or inserting an administrator while one exists, for anyone else, also for the application's login with direct SQL (SQL Server test `Promotion_IsTheDatabaseOwnersRightOnly`) | Mitigated |
+| Locking everybody out of account management | The last administrator who can sign in (enabled, with a password) can be neither disabled nor demoted; the check and the write run under one `sp_getapplock` lock, so two administrators disabling each other leave one (SQL Server race test) | Mitigated |
+| Overfilling a course, a capacity below its students, a student left in a deleted course | Enrolling, leaving, changing the capacity and deleting take one `sp_getapplock` lock per course and count the active enrollments under it; a deletion runs only for the number of students the teacher confirmed (SQL Server race tests for the last seat, lowering the capacity and deleting during an enrollment) | Mitigated |
+| IDOR on editing or deleting a course | Ownership is part of every conditional write; another teacher's, a deleted and a missing course get the same answer and nothing changes | Mitigated |
+| Wildcards or injection through the catalogue and account search | Texts are parameters; `%`, `_`, `[` and the escape character are escaped for LIKE; page sizes and indexes are bounded | Mitigated |
 | IDOR: a teacher reading or changing another teacher's course, notes or student list | Lists are queried by the session's own id; details, notes and student lists check the owner, and adding a note repeats the ownership check in the repository's write; a missing and a foreign course get the same answer ("Ders bulunamadı.") | Mitigated |
 | A student reading notes of courses they did not join, or other students' names | Notes are returned only to the course's teacher and its students; student names only to the course's teacher, other viewers get the count | Mitigated |
 | Joining a course twice | Primary key on student and course; a lost race is reported as "already joined" | Mitigated |
@@ -72,9 +81,11 @@ Protection Law (KVKK, Law No. 6698). This document lists technical measures only
 
 | Threat | Mitigation | Status |
 |---|---|---|
-| A teacher recovering another teacher's student | A code is issued only for a passwordless student enrolled in one of the teacher's own courses; the condition is part of the single `UPDATE` that stores the code, so any other student gets the answer of a missing student and keeps an earlier code | Mitigated |
+| A teacher recovering another teacher's student | A code is issued only for an enabled student with an active enrollment in one of the teacher's own courses; the condition is part of the single `UPDATE` that stores the code, so any other student gets the answer of a missing student, at the same cost, and keeps an earlier code | Mitigated |
+| A teacher or administrator taking over an account with a code | Accepted by design: an administrator issues codes for any account and a teacher for students of their own courses, also for accounts with a password (forgotten passwords). The old password works until the code is used, the issuance is audited (`recovery.code.issued` with the issuer's role) and using the code ends every session of the account | Accepted, documented |
 | Guessing a code | 10 characters (50 bits), stored as a salted PBKDF2 hash, valid for 24 hours and once; wrong codes count towards the sign-in lockout and every refusal costs one verification | Mitigated |
-| A code used after a password was set, or twice | Completing a recovery is one conditional `UPDATE` that requires the verified code, no password, an unexpired code and no lock, and removes the code | Mitigated |
+| A code used twice, after it was replaced, or by a disabled account | Completing a recovery is one conditional `UPDATE` that requires the verified code, an unexpired code, no lock and an enabled account, removes the code and increases the session version; a password change also removes an open code (SQL Server tests: one code used twice at once, a change racing a reset) | Mitigated |
+| Codes or passwords in the log or on screen longer than needed | A code is shown once in a read-only field and cleared with the next action; it is never logged (test `AdministrationAndResets_LeaveNoCodeInTheLog`) | Mitigated |
 
 ## Logging
 
@@ -109,7 +120,10 @@ Protection Law (KVKK, Law No. 6698). This document lists technical measures only
 - A passwordless student enrolled in no course cannot be recovered once a teacher can sign in with a password;
   the operator sets such a password in the database or enrolls the student so that a teacher can issue a code.
 - Names are the sign-in identifiers and are easy to guess; the lockout and the password are the only protection.
-- There is no password change or reset screen for accounts that have a password.
+- A teacher can reset the password of a student of their own courses; schools that do not want this should leave
+  resets to administrators.
+- A database whose teachers already sign in with passwords needs the database owner (`docs/promote-admin.sql`) for
+  its first administrator; the application offers no way around this.
 - The setup key is checked with SHA-256, not a slow hash; its 128 random bits make that sufficient.
 
 ## Out of scope
