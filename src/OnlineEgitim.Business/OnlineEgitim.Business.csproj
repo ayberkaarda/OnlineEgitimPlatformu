@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Sessions can only be issued by AuthService; tests build them directly. -->
+    <InternalsVisibleTo Include="OnlineEgitim.Business.Tests" />
+    <InternalsVisibleTo Include="OnlineEgitim.Data.Tests" />
+    <InternalsVisibleTo Include="OnlineEgitim.UI.Tests" />
+    <!-- Lets Moq create proxies of internal types. -->
+    <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OnlineEgitim.Domain\OnlineEgitim.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.15" />
+  </ItemGroup>
+
+</Project>
