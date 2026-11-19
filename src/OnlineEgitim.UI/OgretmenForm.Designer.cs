@@ -29,6 +29,7 @@ namespace OnlineEgitim.UI
             this.btnSil = new System.Windows.Forms.Button();
             this.pictureBox1 = new System.Windows.Forms.PictureBox();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).BeginInit();
+            this.btnSifre = new System.Windows.Forms.Button();
             this.SuspendLayout();
             // 
             // lstKurslar
@@ -142,12 +143,23 @@ namespace OnlineEgitim.UI
             this.pictureBox1.TabIndex = 8;
             this.pictureBox1.TabStop = false;
             // 
+            // btnSifre
+            // 
+            this.btnSifre.Location = new System.Drawing.Point(192, 348);
+            this.btnSifre.Name = "btnSifre";
+            this.btnSifre.Size = new System.Drawing.Size(170, 37);
+            this.btnSifre.TabIndex = 12;
+            this.btnSifre.Text = "Şifremi Değiştir";
+            this.btnSifre.UseVisualStyleBackColor = true;
+            this.btnSifre.Click += new System.EventHandler(this.btnSifre_Click);
+            // 
             // OgretmenForm
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.SystemColors.ActiveCaption;
             this.ClientSize = new System.Drawing.Size(820, 515);
+            this.Controls.Add(this.btnSifre);
             this.Controls.Add(this.btnSil);
             this.Controls.Add(this.btnDuzenle);
             this.Controls.Add(this.pictureBox1);
@@ -180,6 +192,7 @@ namespace OnlineEgitim.UI
         private System.Windows.Forms.Button btnYeniKurs;
         private System.Windows.Forms.Button btnDuzenle;
         private System.Windows.Forms.Button btnSil;
+        private System.Windows.Forms.Button btnSifre;
         private System.Windows.Forms.PictureBox pictureBox1;
     }
 }

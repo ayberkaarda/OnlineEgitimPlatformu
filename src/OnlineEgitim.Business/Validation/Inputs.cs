@@ -34,6 +34,9 @@ internal sealed record NewPasswordInput(string? FullName, string? Proof, string?
         new(InputRules.Clean(fullName), proof, password, passwordRepeat);
 }
 
+/// <summary>A signed-in account's own password change; every password is kept exactly as typed.</summary>
+internal sealed record ChangePasswordInput(string? CurrentPassword, string? NewPassword, string? NewPasswordRepeat);
+
 /// <summary>The student a teacher issues a recovery code for. The name is cleaned.</summary>
 internal sealed record StudentNameInput(string? FullName)
 {

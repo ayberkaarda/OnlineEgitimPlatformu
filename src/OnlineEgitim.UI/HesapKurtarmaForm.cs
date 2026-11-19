@@ -15,7 +15,7 @@ namespace OnlineEgitim.UI
     public partial class HesapKurtarmaForm : Form
     {
         internal const string StudentHint =
-            "Dersinizin öğretmeninden veya yöneticiden tek kullanımlık bir kurtarma kodu isteyin; kod 24 saat geçerlidir. "
+            "Şifreniz yoksa veya unuttuysanız dersinizin öğretmeninden ya da yöneticiden tek kullanımlık bir kurtarma kodu isteyin; kod 24 saat geçerlidir. "
             + "Kodla yeni şifrenizi belirlediğinizde hesabınız ve ders kayıtlarınız aynen korunur.";
 
         internal const string StudentHintWithSetupKey =
@@ -23,7 +23,7 @@ namespace OnlineEgitim.UI
             + "bir derse kayıtlıysanız kodu o dersin öğretmeni üretir.";
 
         internal const string TeacherHint =
-            "Öğretmen ve yönetici hesapları için yöneticinin verdiği tek kullanımlık kodu girin; kod 24 saat geçerlidir.";
+            "Şifresi olmayan veya şifresini unutan öğretmen ve yönetici hesapları için yöneticinin verdiği tek kullanımlık kodu girin; kod 24 saat geçerlidir.";
 
         internal const string TeacherHintWithSetupKey =
             TeacherHint + " Şifreyle giriş yapabilen bir öğretmen veya yönetici yokken şifresiz bir hesaba kurulum anahtarıyla da şifre belirlenebilir. "

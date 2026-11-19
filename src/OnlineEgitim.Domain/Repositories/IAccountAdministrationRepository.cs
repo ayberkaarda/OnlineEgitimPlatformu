@@ -31,6 +31,12 @@ public interface IAccountAdministrationRepository
     /// last administrator who can sign in keeps the role.
     /// </summary>
     Task<AccountWriteStatus> DemoteAdminAsync(int id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Stores the hash of a single use reset code for any account of <paramref name="role"/>, replacing
+    /// an earlier one; the account's password stays valid until the code is used.
+    /// </summary>
+    Task<AccountWriteStatus> SetRecoveryCodeAsync(AccountRole role, int id, string codeHash, DateTime expires, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Outcome of an administrator's change to an account.</summary>

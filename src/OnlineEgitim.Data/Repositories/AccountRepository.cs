@@ -61,6 +61,39 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
         return updated == 1;
     }
 
+    public async Task<AccountCredentials?> FindByIdAsync(AccountRole role, int id, CancellationToken cancellationToken = default)
+    {
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        if (IsStaff(role))
+        {
+            return await db.Teachers
+                .AsNoTracking()
+                .Where(t => t.Id == id)
+                .Select(t => new AccountCredentials(t.Id, t.FullName, t.PasswordHash, t.PasswordFormat, t.FailedLoginCount, t.LockoutEnd, t.Role, t.Disabled, t.SessionVersion))
+                .SingleOrDefaultAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return await db.Students
+            .AsNoTracking()
+            .Where(s => s.Id == id)
+            .Select(s => new AccountCredentials(s.Id, s.FullName, s.PasswordHash, s.PasswordFormat, s.FailedLoginCount, s.LockoutEnd, AccountRole.Student, s.Disabled, s.SessionVersion))
+            .SingleOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<bool> ChangePasswordAsync(AccountRole role, AccountCredentials verified, DateTime now, string newPasswordHash, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(verified);
+        ArgumentNullException.ThrowIfNull(newPasswordHash);
+
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        var updated = IsStaff(role)
+            ? await ChangePasswordAsync(db.Teachers, verified, now, newPasswordHash, cancellationToken).ConfigureAwait(false)
+            : await ChangePasswordAsync(db.Students, verified, now, newPasswordHash, cancellationToken).ConfigureAwait(false);
+        return updated == 1;
+    }
+
     public async Task<bool> StudentExistsAsync(string fullName, string email, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(fullName);
@@ -269,7 +302,7 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         var updated = await db.Students
             .Where(s => s.FullName == studentName
-                && s.PasswordFormat == PasswordFormat.None
+                && !s.Disabled
                 && db.Enrollments.Any(e => e.StudentId == s.Id && e.LeftUtc == null
                     && db.Courses.Any(c => c.Id == e.CourseId && c.TeacherId == teacherId && c.DeletedUtc == null)))
             .ExecuteUpdateAsync(
@@ -325,7 +358,6 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
         var codeHash = verified.RecoveryCodeHash;
         return accounts
             .Where(a => a.Id == id
-                && a.PasswordFormat == PasswordFormat.None
                 && a.RecoveryCodeHash == codeHash
                 && a.RecoveryCodeExpires > now
                 && !a.Disabled
@@ -487,6 +519,38 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
                 cancellationToken)
             .ConfigureAwait(false);
         return updated == 1 ? id : null;
+    }
+
+    // The WHERE clause is the final decision: the password, format and session version that were
+    // verified must still be there, so a concurrent reset or change wins and this one writes nothing.
+    private static Task<int> ChangePasswordAsync<TAccount>(
+        DbSet<TAccount> accounts,
+        AccountCredentials verified,
+        DateTime now,
+        string newPasswordHash,
+        CancellationToken cancellationToken)
+        where TAccount : Account
+    {
+        var id = verified.Id;
+        var hash = verified.PasswordHash;
+        var format = verified.PasswordFormat;
+        var version = verified.SessionVersion;
+        return accounts
+            .Where(a => a.Id == id
+                && a.PasswordHash == hash
+                && a.PasswordFormat == format
+                && a.SessionVersion == version
+                && !a.Disabled
+                && (a.LockoutEnd == null || a.LockoutEnd <= now))
+            .ExecuteUpdateAsync(
+                s => s
+                    .SetProperty(a => a.PasswordHash, newPasswordHash)
+                    .SetProperty(a => a.PasswordFormat, PasswordFormat.Pbkdf2)
+                    .SetProperty(a => a.RecoveryCodeHash, (string?)null)
+                    .SetProperty(a => a.RecoveryCodeExpires, (DateTime?)null)
+                    .SetProperty(a => a.FailedLoginCount, 0)
+                    .SetProperty(a => a.SessionVersion, a => a.SessionVersion + 1),
+                cancellationToken);
     }
 
     // One UPDATE statement, so concurrent failures cannot lose increments.

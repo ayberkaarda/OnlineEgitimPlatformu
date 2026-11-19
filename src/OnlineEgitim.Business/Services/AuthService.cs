@@ -28,6 +28,13 @@ public interface IAuthService
     /// input is refused.
     /// </summary>
     Task RegisterStudentAsync(string? fullName, string? email, string? password, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Changes the signed-in account's own password after checking its current one. A wrong current
+    /// password counts towards the sign-in lockout like a wrong sign-in; every refusal has one message.
+    /// On success every session of the account ends, this one too: the user signs in again.
+    /// </summary>
+    Task ChangePasswordAsync(UserSession session, string? currentPassword, string? newPassword, string? newPasswordRepeat, CancellationToken cancellationToken = default);
 }
 
 internal sealed class AuthService(
@@ -36,8 +43,14 @@ internal sealed class AuthService(
     TimeProvider timeProvider,
     IAuditLog audit,
     IValidator<RegistrationInput> registrationValidator,
-    IValidator<SignInInput> signInValidator) : IAuthService
+    IValidator<SignInInput> signInValidator,
+    ISessionGuard sessions,
+    IValidator<ChangePasswordInput> changePasswordValidator) : IAuthService
 {
+    internal static readonly string PasswordChangeFailed = string.Create(
+        CultureInfo.InvariantCulture,
+        $"Şifre değiştirilemedi. Mevcut şifre hatalı. {LoginPolicy.MaxFailedAttempts} hatalı denemeden sonra giriş {LoginPolicy.LockoutDuration.TotalMinutes:0} dakika engellenir.");
+
     // Every refused sign-in (unknown name, wrong password, no password, locked or disabled account, a
     // lost race) gets this one answer and one audit event; the lockout rule itself is stated for everyone.
     internal static readonly string CredentialsInvalid = string.Create(
@@ -88,6 +101,53 @@ internal sealed class AuthService(
         }
 
         audit.Record(AuditEvent.StudentRegistered, AccountRole.Student);
+    }
+
+    public async Task ChangePasswordAsync(
+        UserSession session,
+        string? currentPassword,
+        string? newPassword,
+        string? newPasswordRepeat,
+        CancellationToken cancellationToken = default)
+    {
+        Access.RequireSignedIn(session);
+        await sessions.EnsureCurrentAsync(session, cancellationToken).ConfigureAwait(false);
+        var input = new ChangePasswordInput(currentPassword, newPassword, newPasswordRepeat);
+        changePasswordValidator.ValidateOrThrow(input);
+
+        // Derived first, so every path below costs the same: one verification and one new hash.
+        var newHash = passwordHasher.Hash(input.NewPassword!);
+        var account = await accounts.FindByIdAsync(session.Role, session.UserId, cancellationToken).ConfigureAwait(false);
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        if (account is null || account.LockoutEnd > now || account.Disabled)
+        {
+            passwordHasher.SimulateVerification(input.CurrentPassword!);
+            throw ChangeRefused(session.Role);
+        }
+
+        if (passwordHasher.Verify(input.CurrentPassword!, account.PasswordHash, account.PasswordFormat) == PasswordVerificationResult.Failed)
+        {
+            await accounts.RecordFailedLoginAsync(
+                session.Role,
+                account.Id,
+                LoginPolicy.MaxFailedAttempts,
+                now + LoginPolicy.LockoutDuration,
+                cancellationToken).ConfigureAwait(false);
+            throw ChangeRefused(session.Role);
+        }
+
+        if (!await accounts.ChangePasswordAsync(session.Role, account, now, newHash, cancellationToken).ConfigureAwait(false))
+        {
+            throw ChangeRefused(session.Role);
+        }
+
+        audit.Record(AuditEvent.PasswordChanged, session.Role);
+    }
+
+    private BusinessRuleException ChangeRefused(AccountRole role)
+    {
+        audit.Record(AuditEvent.PasswordChangeFailed, role);
+        return new BusinessRuleException(PasswordChangeFailed);
     }
 
     private async Task<UserSession> SignInAsync(

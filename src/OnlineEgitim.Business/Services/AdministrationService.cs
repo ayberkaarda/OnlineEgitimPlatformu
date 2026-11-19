@@ -47,6 +47,13 @@ public interface IAdministrationService
 
     /// <summary>Makes an administrator a teacher. The last administrator who can sign in keeps the role.</summary>
     Task DemoteAdminAsync(UserSession admin, int accountId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Issues a single use reset code (24 hours) for any account, replacing an earlier one. The person
+    /// sets a new password with it; the old password works until then, and every session of the account
+    /// ends when the code is used. The code is returned once and never stored or logged.
+    /// </summary>
+    Task<RecoveryCode> IssueResetCodeAsync(UserSession admin, AccountRole role, int accountId, CancellationToken cancellationToken = default);
 }
 
 internal sealed class AdministrationService(
@@ -173,6 +180,25 @@ internal sealed class AdministrationService(
 
         var status = await administration.DemoteAdminAsync(accountId, cancellationToken).ConfigureAwait(false);
         Complete(status, AuditEvent.AdminDemoted, AccountRole.Admin);
+    }
+
+    public async Task<RecoveryCode> IssueResetCodeAsync(UserSession admin, AccountRole role, int accountId, CancellationToken cancellationToken = default)
+    {
+        await RequireAdminAsync(admin, cancellationToken).ConfigureAwait(false);
+        if (!Enum.IsDefined(role) || accountId <= 0)
+        {
+            throw new BusinessRuleException(AccountNotFound);
+        }
+
+        var (code, hash, expires) = NewCode();
+        var status = await administration.SetRecoveryCodeAsync(role, accountId, hash, expires, cancellationToken).ConfigureAwait(false);
+        if (status != AccountWriteStatus.Done)
+        {
+            throw new BusinessRuleException(AccountNotFound);
+        }
+
+        audit.Record(AuditEvent.RecoveryCodeIssued, AccountRole.Admin);
+        return new RecoveryCode(code, expires);
     }
 
     private void Complete(AccountWriteStatus status, AuditEvent done, AccountRole role)

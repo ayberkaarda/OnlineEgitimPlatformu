@@ -170,6 +170,26 @@ internal sealed class AccountAdministrationRepository(IDbContextFactory<EgitimDb
         return AccountWriteStatus.Done;
     }
 
+    public async Task<AccountWriteStatus> SetRecoveryCodeAsync(AccountRole role, int id, string codeHash, DateTime expires, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(codeHash);
+
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        var updated = role switch
+        {
+            AccountRole.Student => await db.Students
+                .Where(s => s.Id == id)
+                .ExecuteUpdateAsync(s => s.SetProperty(a => a.RecoveryCodeHash, codeHash).SetProperty(a => a.RecoveryCodeExpires, expires), cancellationToken)
+                .ConfigureAwait(false),
+            AccountRole.Teacher or AccountRole.Admin => await db.Teachers
+                .Where(t => t.Id == id && t.Role == role)
+                .ExecuteUpdateAsync(s => s.SetProperty(a => a.RecoveryCodeHash, codeHash).SetProperty(a => a.RecoveryCodeExpires, expires), cancellationToken)
+                .ConfigureAwait(false),
+            _ => 0,
+        };
+        return updated == 1 ? AccountWriteStatus.Done : AccountWriteStatus.NotFound;
+    }
+
     /// <summary>An administrator who can sign in: not disabled and with a password.</summary>
     private static bool IsActiveAdmin(AccountRole role, bool disabled, PasswordFormat format) =>
         role == AccountRole.Admin && !disabled && format != PasswordFormat.None;

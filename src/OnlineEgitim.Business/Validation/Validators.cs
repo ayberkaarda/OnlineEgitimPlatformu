@@ -170,6 +170,26 @@ internal sealed class NewPasswordInputValidator : AbstractValidator<NewPasswordI
     }
 }
 
+/// <summary>
+/// A password change, in this order: the current and the new password present (the current one at most
+/// as long as an existing password can be), two equal new passwords, a new password of 8 to 64 characters.
+/// </summary>
+internal sealed class ChangePasswordInputValidator : AbstractValidator<ChangePasswordInput>
+{
+    public ChangePasswordInputValidator()
+    {
+        ClassLevelCascadeMode = CascadeMode.Stop;
+
+        RuleFor(p => p)
+            .Must(p => ValidationRuleExtensions.IsAcceptableSignInPassword(p.CurrentPassword) && !string.IsNullOrWhiteSpace(p.NewPassword))
+            .WithMessage(ValidationMessages.InputRequired);
+        RuleFor(p => p.NewPasswordRepeat)
+            .Must((p, repeat) => string.Equals(p.NewPassword, repeat, StringComparison.Ordinal)).WithMessage(ValidationMessages.PasswordsDoNotMatch);
+        RuleFor(p => p.NewPassword)
+            .Must(ValidationRuleExtensions.IsValidNewPassword).WithMessage(ValidationMessages.PasswordInvalid);
+    }
+}
+
 /// <summary>The student of a recovery code: a name that fits an account.</summary>
 internal sealed class StudentNameInputValidator : AbstractValidator<StudentNameInput>
 {

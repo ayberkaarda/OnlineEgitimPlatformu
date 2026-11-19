@@ -25,16 +25,17 @@ public sealed record RecoveryCode(string Code, DateTime ExpiresUtc);
 public interface IRecoveryService
 {
     /// <summary>
-    /// Issues a recovery code for the student without a password who signs in with
-    /// <paramref name="studentName"/>, replacing an earlier code. Teachers only, and only for a student
-    /// enrolled in at least one of the teacher's own courses; any other student gets the answer of a
-    /// student that does not exist and keeps its earlier code.
+    /// Issues a single use code for the student who signs in with <paramref name="studentName"/>,
+    /// replacing an earlier code: a first password for an account without one, or a new password for a
+    /// student who forgot theirs (the old password works until the code is used). Teachers only, and only
+    /// for a student enrolled in one of the teacher's own courses; any other student gets the answer of a
+    /// student that does not exist, at the same cost, and keeps its earlier code.
     /// </summary>
     Task<RecoveryCode> IssueStudentCodeAsync(UserSession teacher, string? studentName, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Sets the first password of a student and signs the student in, with the code a teacher or an
-    /// administrator issued or, while no teacher can sign in with a password, with the setup key (told
+    /// Sets a new password of a student and signs the student in, with the code a teacher or an
+    /// administrator issued (every earlier session of the account ends) or, while no teacher can sign in with a password, with the setup key (told
     /// apart by their form). The setup key works only for a student enrolled in no course; for an
     /// enrolled student it is refused like a wrong key and stays unused.
     /// </summary>
@@ -58,7 +59,7 @@ internal sealed class RecoveryService(
     IValidator<StudentNameInput> studentNameValidator,
     IValidator<NewPasswordInput> newPasswordValidator) : IRecoveryService
 {
-    internal const string NoPasswordlessStudent = "Bu adla kayıtlı, şifresi olmayan bir öğrenci bulunamadı.";
+    internal const string StudentNotFound = "Bu adla derslerinizden birine kayıtlı bir öğrenci bulunamadı.";
     internal const string TeacherRecoveryFailed =
         "Şifre belirlenemedi. Kurulum anahtarını ve adı kontrol edin; yalnızca şifresi olmayan öğretmen hesaplarına şifre belirlenebilir.";
     internal const string SetupKeyRecoveryFailed =
@@ -88,7 +89,7 @@ internal sealed class RecoveryService(
             cancellationToken).ConfigureAwait(false);
         if (!stored)
         {
-            throw new BusinessRuleException(NoPasswordlessStudent);
+            throw new BusinessRuleException(StudentNotFound);
         }
 
         audit.Record(AuditEvent.RecoveryCodeIssued, AccountRole.Teacher);
@@ -145,10 +146,8 @@ internal sealed class RecoveryService(
         }
 
         // Exactly one verification on every path, real or simulated: an account without a usable code
-        // (none, expired, or a password set meanwhile) costs what a wrong code costs.
-        var usableHash = account.PasswordFormat == PasswordFormat.None && account.RecoveryCodeExpires > now
-            ? account.RecoveryCodeHash
-            : null;
+        // (none or expired) costs what a wrong code costs.
+        var usableHash = account.RecoveryCodeExpires > now ? account.RecoveryCodeHash : null;
         bool verified;
         if (usableHash is null)
         {

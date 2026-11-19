@@ -43,6 +43,8 @@ namespace OnlineEgitim.UI
             this.txtKod = new System.Windows.Forms.TextBox();
             this.lblKodBitis = new System.Windows.Forms.Label();
             this.grpYeni.SuspendLayout();
+            this.btnSifirlamaKodu = new System.Windows.Forms.Button();
+            this.btnSifremiDegistir = new System.Windows.Forms.Button();
             this.SuspendLayout();
             //
             // lblBaslik
@@ -289,6 +291,26 @@ namespace OnlineEgitim.UI
             this.lblKodBitis.Name = "lblKodBitis";
             this.lblKodBitis.Size = new System.Drawing.Size(294, 70);
             this.lblKodBitis.TabIndex = 9;
+            // 
+            // btnSifremiDegistir
+            // 
+            this.btnSifremiDegistir.Location = new System.Drawing.Point(200, 470);
+            this.btnSifremiDegistir.Name = "btnSifremiDegistir";
+            this.btnSifremiDegistir.Size = new System.Drawing.Size(176, 34);
+            this.btnSifremiDegistir.TabIndex = 14;
+            this.btnSifremiDegistir.Text = "Şifremi Değiştir";
+            this.btnSifremiDegistir.UseVisualStyleBackColor = true;
+            this.btnSifremiDegistir.Click += new System.EventHandler(this.btnSifremiDegistir_Click);
+            // 
+            // btnSifirlamaKodu
+            // 
+            this.btnSifirlamaKodu.Location = new System.Drawing.Point(16, 470);
+            this.btnSifirlamaKodu.Name = "btnSifirlamaKodu";
+            this.btnSifirlamaKodu.Size = new System.Drawing.Size(176, 34);
+            this.btnSifirlamaKodu.TabIndex = 13;
+            this.btnSifirlamaKodu.Text = "Sıfırlama Kodu Üret";
+            this.btnSifirlamaKodu.UseVisualStyleBackColor = true;
+            this.btnSifirlamaKodu.Click += new System.EventHandler(this.btnSifirlamaKodu_Click);
             //
             // YoneticiForm
             //
@@ -296,6 +318,8 @@ namespace OnlineEgitim.UI
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.SystemColors.ActiveCaption;
             this.ClientSize = new System.Drawing.Size(920, 520);
+            this.Controls.Add(this.btnSifremiDegistir);
+            this.Controls.Add(this.btnSifirlamaKodu);
             this.Controls.Add(this.grpYeni);
             this.Controls.Add(this.btnCikis);
             this.Controls.Add(this.btnYoneticilikten);
@@ -336,6 +360,8 @@ namespace OnlineEgitim.UI
         private System.Windows.Forms.Button btnEtkinlestir;
         private System.Windows.Forms.Button btnYoneticilikten;
         private System.Windows.Forms.Button btnCikis;
+        private System.Windows.Forms.Button btnSifremiDegistir;
+        private System.Windows.Forms.Button btnSifirlamaKodu;
         private System.Windows.Forms.GroupBox grpYeni;
         private System.Windows.Forms.RadioButton rbOgretmen;
         private System.Windows.Forms.RadioButton rbOgrenci;

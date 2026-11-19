@@ -117,6 +117,7 @@ namespace OnlineEgitim.UI
                     _create.FocusAfterUnlock(txtKod);
                 },
                 btnOlustur,
+                btnSifirlamaKodu,
                 rbOgretmen,
                 rbOgrenci);
             if (created)
@@ -126,6 +127,29 @@ namespace OnlineEgitim.UI
 
             return ran;
         }
+
+        /// <summary>
+        /// Issues a single use reset code for the selected account and shows it once; ignored while a
+        /// previous one is still being issued. The account's password works until the code is used.
+        /// </summary>
+        internal Task<bool> IssueResetCodeAsync() =>
+            this.RunExclusiveAsync(
+                _create,
+                async () =>
+                {
+                    ClearCode();
+                    if (Selected is not { } account)
+                    {
+                        Prompts.Warn("Lütfen bir hesap seçin.");
+                        return;
+                    }
+
+                    var code = await _administration.IssueResetCodeAsync(_session, account.Role, account.Id);
+                    ShowCode(code, $"\"{account.FullName}\" bu kodla \"Kodla şifre belirle\" ekranından yeni şifresini belirler; açık oturumları o anda kapanır.");
+                    _create.FocusAfterUnlock(txtKod);
+                },
+                btnSifirlamaKodu,
+                btnOlustur);
 
         /// <summary>Disables or enables the selected account after a confirmation.</summary>
         internal Task<bool> SetDisabledAsync(bool disabled) =>
@@ -246,5 +270,15 @@ namespace OnlineEgitim.UI
         private async void btnYoneticilikten_Click(object? sender, EventArgs e) => await DemoteAsync();
 
         private void btnCikis_Click(object? sender, EventArgs e) => EndSession();
+
+        private async void btnSifirlamaKodu_Click(object? sender, EventArgs e) => await IssueResetCodeAsync();
+
+        private void btnSifremiDegistir_Click(object? sender, EventArgs e)
+        {
+            if (PasswordChange.Show(this, _forms, _session))
+            {
+                EndSession();
+            }
+        }
     }
 }

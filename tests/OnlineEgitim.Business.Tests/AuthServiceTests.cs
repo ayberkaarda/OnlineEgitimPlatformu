@@ -20,7 +20,7 @@ public sealed class AuthServiceTests
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private AuthService Service => new(_accounts.Object, _hasher, _time, _audit, Validators.Registration, Validators.SignIn);
+    private AuthService Service => new(_accounts.Object, _hasher, _time, _audit, Validators.Registration, Validators.SignIn, CurrentSessions.Instance, Validators.ChangePassword);
 
     [Fact]
     public async Task SignIn_RightPassword_IssuesASessionOfTheRequestedRole()
@@ -199,7 +199,7 @@ public sealed class AuthServiceTests
     public async Task Registration_KnownAndUnknownName_HaveSamePublicOutcome()
     {
         var hasher = new CountingHasher(_hasher);
-        var service = new AuthService(_accounts.Object, hasher, _time, _audit, Validators.Registration, Validators.SignIn);
+        var service = new AuthService(_accounts.Object, hasher, _time, _audit, Validators.Registration, Validators.SignIn, CurrentSessions.Instance, Validators.ChangePassword);
         _accounts.Setup(a => a.StudentExistsAsync("Mert Deneme", "yeni@example.com", It.IsAny<CancellationToken>())).ReturnsAsync(true);
         _accounts.Setup(a => a.StudentExistsAsync("Yeni Kişi", "yeni@example.com", It.IsAny<CancellationToken>())).ReturnsAsync(false);
         _accounts.Setup(a => a.AddStudentAsync(It.Is<Student>(s => s.FullName == "Yeni Kişi"), It.IsAny<CancellationToken>())).ReturnsAsync(9);

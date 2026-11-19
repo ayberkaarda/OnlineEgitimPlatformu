@@ -364,8 +364,8 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         Assert.True(studentId > SelinId);
 
         var recovery = _db.Get<IRecoveryService>();
-        var hasPassword = await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.IssueStudentCodeAsync(Teacher(DenizId), "Mert Deneme", Ct));
-        Assert.Equal(RecoveryService.NoPasswordlessStudent, hasPassword.Message);
+        var notEnrolled = await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.IssueStudentCodeAsync(Teacher(DenizId), "Mert Deneme", Ct));
+        Assert.Equal(RecoveryService.StudentNotFound, notEnrolled.Message);
 
         var expiring = await recovery.IssueStudentCodeAsync(Teacher(DenizId), "Kodsuz Öğrenci", Ct);
         Assert.Equal(_db.Clock.GetUtcNow().UtcDateTime + Business.Security.RecoveryPolicy.CodeLifetime, expiring.ExpiresUtc);
@@ -382,7 +382,9 @@ public sealed class SqliteServiceTests : IAsyncLifetime
 
         Assert.True(session.IsStudent);
         Assert.Equal(session.UserId, (await Auth.SignInStudentAsync("Kodsuz Öğrenci", "Yeni.Sifre1", Ct)).UserId);
-        await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.IssueStudentCodeAsync(Teacher(DenizId), "Kodsuz Öğrenci", Ct));
+
+        // A student with a password who forgot it gets a new code from the course's teacher.
+        Assert.NotNull(await recovery.IssueStudentCodeAsync(Teacher(DenizId), "Kodsuz Öğrenci", Ct));
     }
 
     /// <summary>
@@ -406,7 +408,7 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         var unenrolledByDeniz = await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.IssueStudentCodeAsync(Teacher(DenizId), "Derssiz Öğrenci", Ct));
         var unenrolledByEce = await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.IssueStudentCodeAsync(Teacher(EceId), "Derssiz Öğrenci", Ct));
 
-        Assert.Equal(RecoveryService.NoPasswordlessStudent, missing.Message);
+        Assert.Equal(RecoveryService.StudentNotFound, missing.Message);
         Assert.Equal(missing.Message, foreign.Message);
         Assert.Equal(missing.Message, unenrolledByDeniz.Message);
         Assert.Equal(missing.Message, unenrolledByEce.Message);

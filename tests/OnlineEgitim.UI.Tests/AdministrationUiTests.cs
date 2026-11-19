@@ -151,6 +151,13 @@ public sealed class AdministrationUiTests
             return Change.Task;
         }
 
+        public Task<RecoveryCode> IssueResetCodeAsync(UserSession admin, AccountRole role, int accountId, CancellationToken cancellationToken = default)
+        {
+            Calls.Add("reset:" + role + "/" + accountId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            Create = new TaskCompletionSource<RecoveryCode>();
+            return Create.Task;
+        }
+
         public Task DemoteAdminAsync(UserSession admin, int accountId, CancellationToken cancellationToken = default)
         {
             Calls.Add("demote:" + accountId.ToString(System.Globalization.CultureInfo.InvariantCulture));

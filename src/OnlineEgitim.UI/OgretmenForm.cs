@@ -219,5 +219,12 @@ namespace OnlineEgitim.UI
                 await LoadAsync();
             }
         }
+        private void btnSifre_Click(object? sender, EventArgs e)
+        {
+            if (PasswordChange.Show(this, _forms, _session))
+            {
+                ((ISessionPanel)this).EndSession();
+            }
+        }
     }
 }

@@ -68,6 +68,8 @@ public sealed class AuditTests
         { AuditEvent.AdminDemoted, 21, "admin.role.demoted" },
         { AuditEvent.SessionRejected, 22, "auth.session.rejected" },
         { AuditEvent.FirstAdminCreated, 23, "setup.admin.created" },
+        { AuditEvent.PasswordChanged, 24, "auth.password.changed" },
+        { AuditEvent.PasswordChangeFailed, 25, "auth.password.change_failed" },
     };
 
     [Theory]

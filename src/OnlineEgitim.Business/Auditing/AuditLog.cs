@@ -49,10 +49,10 @@ public enum AuditEvent
     /// <summary>A founder operation was refused: the setup key was missing, wrong, expired or used.</summary>
     SetupRefused = 10,
 
-    /// <summary>A teacher issued a recovery code for a student account without a password.</summary>
+    /// <summary>A teacher (for a student of their course) or an administrator (for any account) issued a single use code.</summary>
     RecoveryCodeIssued = 11,
 
-    /// <summary>An account without a password got its first password through a verified recovery.</summary>
+    /// <summary>An account set its password with a single use code or the setup key; its sessions ended.</summary>
     AccountRecovered = 12,
 
     /// <summary>A recovery was refused (wrong, used or expired code or key, or no such account).</summary>
@@ -87,6 +87,12 @@ public enum AuditEvent
 
     /// <summary>The first administrator account was created by the first-run setup.</summary>
     FirstAdminCreated = 23,
+
+    /// <summary>A signed-in account changed its own password; its sessions ended.</summary>
+    PasswordChanged = 24,
+
+    /// <summary>A password change was refused: the current password was wrong, or the account locked or changed.</summary>
+    PasswordChangeFailed = 25,
 }
 
 /// <summary>Receives <see cref="AuditEvent"/>s.</summary>
@@ -123,6 +129,8 @@ public static class AuditCodes
         AuditEvent.AdminDemoted => "admin.role.demoted",
         AuditEvent.SessionRejected => "auth.session.rejected",
         AuditEvent.FirstAdminCreated => "setup.admin.created",
+        AuditEvent.PasswordChanged => "auth.password.changed",
+        AuditEvent.PasswordChangeFailed => "auth.password.change_failed",
         _ => throw new ArgumentOutOfRangeException(nameof(auditEvent), auditEvent, "Unknown audit event."),
     };
 

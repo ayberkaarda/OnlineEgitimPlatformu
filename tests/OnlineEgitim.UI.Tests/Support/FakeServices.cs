@@ -42,6 +42,18 @@ internal sealed class PendingAuthService : IAuthService
         return _register.Task;
     }
 
+    public int ChangeCalls { get; private set; }
+
+    public TaskCompletionSource Change { get; private set; } = new();
+
+    public Task ChangePasswordAsync(UserSession session, string? currentPassword, string? newPassword, string? newPasswordRepeat, CancellationToken cancellationToken = default)
+    {
+        ChangeCalls++;
+        LastPassword = currentPassword;
+        Change = new TaskCompletionSource();
+        return Change.Task;
+    }
+
     /// <summary>Refuses the pending sign-in as wrong credentials would.</summary>
     public void RefuseSignIn() => _signIn.SetException(new BusinessRuleException("Giriş başarısız."));
 

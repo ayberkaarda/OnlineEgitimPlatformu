@@ -57,6 +57,12 @@ internal static class SuccessWriteGateExtensions
             return await inner.RecordSuccessfulLoginAsync(role, verified, now, newPasswordHash, cancellationToken);
         }
 
+        public Task<AccountCredentials?> FindByIdAsync(AccountRole role, int id, CancellationToken cancellationToken = default) =>
+            inner.FindByIdAsync(role, id, cancellationToken);
+
+        public Task<bool> ChangePasswordAsync(AccountRole role, AccountCredentials verified, DateTime now, string newPasswordHash, CancellationToken cancellationToken = default) =>
+            inner.ChangePasswordAsync(role, verified, now, newPasswordHash, cancellationToken);
+
         public Task<bool> StudentExistsAsync(string fullName, string email, CancellationToken cancellationToken = default) =>
             inner.StudentExistsAsync(fullName, email, cancellationToken);
 

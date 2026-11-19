@@ -39,6 +39,18 @@ public interface IAccountRepository
         string? newPasswordHash,
         CancellationToken cancellationToken = default);
 
+    /// <summary>The sign-in state of the account with <paramref name="id"/> in <paramref name="role"/>'s table.</summary>
+    Task<AccountCredentials?> FindByIdAsync(AccountRole role, int id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Replaces the password of the account of <paramref name="verified"/> after its current password
+    /// was checked, in one conditional UPDATE: only while it still has the verified password value,
+    /// format and session version, is not locked at <paramref name="now"/> and not disabled. The session
+    /// version is increased, so every session of the account ends, and an open recovery code is removed.
+    /// </summary>
+    /// <returns><see langword="false"/> when the account changed since it was read; nothing is written then.</returns>
+    Task<bool> ChangePasswordAsync(AccountRole role, AccountCredentials verified, DateTime now, string newPasswordHash, CancellationToken cancellationToken = default);
+
     /// <summary>Whether a student signs in with <paramref name="fullName"/> or uses <paramref name="email"/>.</summary>
     Task<bool> StudentExistsAsync(string fullName, string email, CancellationToken cancellationToken = default);
 
@@ -74,21 +86,20 @@ public interface IAccountRepository
 
     /// <summary>
     /// Stores a recovery code hash for the student who signs in with <paramref name="studentName"/>,
-    /// replacing an earlier one, in one conditional UPDATE: only while the account has no password
-    /// (<see cref="PasswordFormat.None"/>) and is enrolled in at least one course of teacher
-    /// <paramref name="teacherId"/>.
+    /// replacing an earlier one, in one conditional UPDATE: only while the student is not disabled and
+    /// has an active enrollment in a course of teacher <paramref name="teacherId"/>. The code sets a
+    /// first password, or a new one for a student who forgot theirs.
     /// </summary>
     /// <returns>
-    /// <see langword="false"/> when no such student exists, it has a password or it is not a student
-    /// of the teacher; nothing is written then.
+    /// <see langword="false"/> when no such student exists or it is not a student of the teacher;
+    /// nothing is written then.
     /// </returns>
     Task<bool> SetRecoveryCodeAsync(int teacherId, string studentName, string codeHash, DateTime expires, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Sets the password of the account of <paramref name="verified"/> (in <paramref name="role"/>'s
-    /// table) with its single use code in one conditional UPDATE: only while the account still has no
-    /// password, the verified code and an unexpired code at <paramref name="now"/>, is not locked and
-    /// not disabled. The PBKDF2 hash and its format are written together, the code is removed, so it
+    /// table) with its single use code in one conditional UPDATE: only while the account still has the
+    /// verified code and an unexpired code at <paramref name="now"/>, is not locked and not disabled. The PBKDF2 hash and its format are written together, the code is removed, so it
     /// works once, and the session version is increased, so earlier sessions end.
     /// </summary>
     /// <returns><see langword="false"/> when nothing was written.</returns>

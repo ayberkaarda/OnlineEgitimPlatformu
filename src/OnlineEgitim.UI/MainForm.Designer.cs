@@ -1,4 +1,4 @@
-﻿namespace OnlineEgitim.UI
+namespace OnlineEgitim.UI
 {
     partial class MainForm
     {
@@ -37,6 +37,7 @@
             this.btnDersSec = new System.Windows.Forms.Button();
             this.btnAyril = new System.Windows.Forms.Button();
             this.btnKurslarim = new System.Windows.Forms.Button();
+            this.btnSifre = new System.Windows.Forms.Button();
             this.SuspendLayout();
             //
             // lblhosgeldin
@@ -233,6 +234,16 @@
             this.btnKurslarim.Text = "Kurslarım";
             this.btnKurslarim.UseVisualStyleBackColor = true;
             this.btnKurslarim.Click += new System.EventHandler(this.btnKurslarim_Click);
+            // 
+            // btnSifre
+            // 
+            this.btnSifre.Location = new System.Drawing.Point(616, 410);
+            this.btnSifre.Name = "btnSifre";
+            this.btnSifre.Size = new System.Drawing.Size(124, 37);
+            this.btnSifre.TabIndex = 20;
+            this.btnSifre.Text = "Şifremi Değiştir";
+            this.btnSifre.UseVisualStyleBackColor = true;
+            this.btnSifre.Click += new System.EventHandler(this.btnSifre_Click);
             //
             // MainForm
             //
@@ -241,6 +252,7 @@
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.SystemColors.ActiveCaption;
             this.ClientSize = new System.Drawing.Size(760, 465);
+            this.Controls.Add(this.btnSifre);
             this.Controls.Add(this.btnKurslarim);
             this.Controls.Add(this.btnAyril);
             this.Controls.Add(this.btnDersSec);
@@ -291,5 +303,6 @@
         private System.Windows.Forms.Button btnDersSec;
         private System.Windows.Forms.Button btnAyril;
         private System.Windows.Forms.Button btnKurslarim;
+        private System.Windows.Forms.Button btnSifre;
     }
 }
