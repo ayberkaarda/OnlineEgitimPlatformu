@@ -113,10 +113,11 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
         {
             await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
 
-            // Serializable: the emptiness check holds a range lock until the commit, so of two
-            // concurrent setups one waits or is chosen as a deadlock victim; never both insert.
+            // Serializable: the emptiness check holds a range lock until the commit, so two concurrent
+            // setups can never both insert. On SQL Server the check takes an update lock, which a second
+            // setup has to wait for, so the loser sees the winner's row instead of becoming a deadlock victim.
             await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken).ConfigureAwait(false);
-            if (await db.Teachers.AnyAsync(cancellationToken).ConfigureAwait(false))
+            if (await AnyTeacherLockedAsync(db, cancellationToken).ConfigureAwait(false))
             {
                 return null;
             }
@@ -133,7 +134,7 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
             return entity.Id;
         }
-        catch (Exception ex) when (ex is DbUpdateException or DbException)
+        catch (Exception ex) when (ex is DbUpdateException or DbException || ex.InnerException is DbUpdateException or DbException)
         {
             // Lost the race (deadlock victim or a rejected insert); the winner's row decides.
             if (await AnyTeacherAsync(CancellationToken.None).ConfigureAwait(false))
@@ -154,6 +155,22 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
             .Select(t => new TeacherProfile(t.Id, t.FullName, t.Specialty))
             .SingleOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private static async Task<bool> AnyTeacherLockedAsync(EgitimDbContext db, CancellationToken cancellationToken)
+    {
+        if (!db.Database.IsSqlServer())
+        {
+            return await db.Teachers.AnyAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+#pragma warning disable EF1002 // Constant statement without any input.
+        var count = await db.Database
+            .SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM dbo.Egitmenler WITH (UPDLOCK, HOLDLOCK)")
+            .SingleAsync(cancellationToken)
+            .ConfigureAwait(false);
+#pragma warning restore EF1002
+        return count > 0;
     }
 
     private static Task<AccountCredentials?> FindAsync<TAccount>(DbSet<TAccount> accounts, string fullName, CancellationToken cancellationToken)
