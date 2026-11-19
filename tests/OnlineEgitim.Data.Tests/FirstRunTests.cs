@@ -273,6 +273,55 @@ public sealed class FirstRunTests
         await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.RecoverStudentAsync("Derssiz Öğrenci", key, "Baska.Sifre1", "Baska.Sifre1", Ct));
     }
 
+    /// <summary>
+    /// The setup key recovers only students enrolled in no course. Two passwordless students under the
+    /// same conditions (no teacher can sign in with a password): the enrolled one is refused like a
+    /// wrong key, keeps no password and leaves the key unused; the one without a course gets the
+    /// password with the same key.
+    /// </summary>
+    [Fact]
+    public async Task SetupKey_EnrolledStudent_IsRefusedAndKeyStaysUnused()
+    {
+        await using var db = new SqliteDatabase(seed: false);
+        await db.InitializeAsync();
+        await using (var context = db.CreateContext())
+        {
+            var teacher = new Domain.Entities.Teacher { FullName = "Şifresiz Öğretmen", Specialty = "Fizik", PasswordFormat = Domain.Entities.PasswordFormat.None };
+            var enrolled = new Domain.Entities.Student { FullName = "Kayıtlı Öğrenci", Email = "kayitli@example.com", PasswordFormat = Domain.Entities.PasswordFormat.None };
+            context.Teachers.Add(teacher);
+            context.Students.AddRange(
+                enrolled,
+                new Domain.Entities.Student { FullName = "Derssiz Öğrenci", Email = "derssiz@example.com", PasswordFormat = Domain.Entities.PasswordFormat.None });
+            await context.SaveChangesAsync(Ct);
+            var course = new Domain.Entities.Course { Name = "Mekanik", Topic = "Kuvvet", TeacherId = teacher.Id };
+            context.Courses.Add(course);
+            await context.SaveChangesAsync(Ct);
+            context.Enrollments.Add(new Domain.Entities.Enrollment { StudentId = enrolled.Id, CourseId = course.Id });
+            await context.SaveChangesAsync(Ct);
+        }
+
+        var key = await AddKeyAsync(db);
+        var recovery = db.Get<IRecoveryService>();
+
+        var refused = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => recovery.RecoverStudentAsync("Kayıtlı Öğrenci", key, "Yeni.Sifre1", "Yeni.Sifre1", Ct));
+
+        Assert.Equal(RecoveryService.SetupKeyRecoveryFailed, refused.Message);
+        await using (var context = db.CreateContext())
+        {
+            Assert.Equal(Domain.Entities.PasswordFormat.None, (await context.Students.SingleAsync(s => s.FullName == "Kayıtlı Öğrenci", Ct)).PasswordFormat);
+            Assert.Equal(0, await TestServices.ConsumedSetupKeysAsync(context, Ct));
+        }
+
+        await Assert.ThrowsAsync<BusinessRuleException>(() => db.Get<IAuthService>().SignInStudentAsync("Kayıtlı Öğrenci", "Yeni.Sifre1", Ct));
+        var unenrolled = await recovery.RecoverStudentAsync("Derssiz Öğrenci", key, "Yeni.Sifre1", "Yeni.Sifre1", Ct);
+        Assert.True(unenrolled.IsStudent);
+        await using (var context = db.CreateContext())
+        {
+            Assert.Equal(1, await TestServices.ConsumedSetupKeysAsync(context, Ct));
+        }
+    }
+
     private static async Task AddStudentAsync(SqliteDatabase db, string name)
     {
         await using var context = db.CreateContext();

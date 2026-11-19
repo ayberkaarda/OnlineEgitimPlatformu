@@ -88,8 +88,9 @@ public interface IAccountRepository
     /// has no password its first password (a PBKDF2 hash, written together with its format), with a
     /// setup key. One serializable transaction holds the teacher table: refused while a teacher can
     /// sign in with a password; otherwise the key is checked first (before the name is looked at),
-    /// then the account is written and the key used up by a conditional UPDATE. When no
-    /// such account exists or the write fails, the key stays unused.
+    /// then the account is written and the key used up by a conditional UPDATE. A student qualifies
+    /// only while enrolled in no course (an enrolled student gets a recovery code from the course's
+    /// teacher). When no such account exists or the write fails, the key stays unused.
     /// </summary>
     Task<SetupKeyWriteResult> SetFirstPasswordWithSetupKeyAsync(
         AccountRole role,

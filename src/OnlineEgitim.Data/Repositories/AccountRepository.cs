@@ -382,10 +382,15 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
         return updated == 1 ? id : null;
     }
 
+    // Only a student enrolled in no course: a student of a course has that course's teacher, who issues
+    // a recovery code instead. Both statements check it, so an enrolled student matches no row, the
+    // caller rolls back and the key stays unused.
     private static async Task<int?> SetFirstStudentPasswordAsync(EgitimDbContext db, string fullName, string newPasswordHash, CancellationToken cancellationToken)
     {
         var id = await db.Students
-            .Where(s => s.FullName == fullName && s.PasswordFormat == PasswordFormat.None)
+            .Where(s => s.FullName == fullName
+                && s.PasswordFormat == PasswordFormat.None
+                && !db.Enrollments.Any(e => e.StudentId == s.Id))
             .Select(s => (int?)s.Id)
             .SingleOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -395,7 +400,9 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
         }
 
         var updated = await db.Students
-            .Where(s => s.Id == id && s.PasswordFormat == PasswordFormat.None)
+            .Where(s => s.Id == id
+                && s.PasswordFormat == PasswordFormat.None
+                && !db.Enrollments.Any(e => e.StudentId == s.Id))
             .ExecuteUpdateAsync(
                 s => s
                     .SetProperty(a => a.PasswordHash, newPasswordHash)

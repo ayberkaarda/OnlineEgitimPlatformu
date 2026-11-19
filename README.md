@@ -26,7 +26,7 @@ Projeyi çalıştırmak için aşağıdaki adımları takip edin:
    - Kurulum anahtarı yalnızca **şifreyle giriş yapabilen hiçbir öğretmen yokken** kabul edilir:
      öğrencileri olan ama öğretmeni olmayan veritabanında ilk öğretmen (girişteki **İlk öğretmen kurulumu (kurulum anahtarı)** bağlantısı),
      yalnızca şifresiz öğretmenleri olan veritabanında bir öğretmene ilk şifre (**Şifresiz hesabı kurtar** → **Öğretmen (kurulum anahtarı)**) ve
-     hiçbir derse kayıtlı olmayan şifresiz bir öğrenciye ilk şifre (aynı ekranda kod yerine anahtar). Şifreli bir öğretmen varken anahtar kabul edilmez.
+     **yalnızca** hiçbir derse kayıtlı olmayan şifresiz bir öğrenciye ilk şifre (aynı ekranda kod yerine anahtar; derse kayıtlı öğrenci için anahtar reddedilir ve tüketilmez, kodu dersin öğretmeni üretir). Şifreli bir öğretmen varken anahtar kabul edilmez.
    - Anahtarı **yalnızca veritabanı sahibi (db_owner/DBA)** üretir: `sqlcmd -S <sunucu> -d <veritabanı> -E -i docs\issue-setup-key.sql`.
      Betik `CRYPT_GEN_RANDOM` ile 128 bitlik anahtarı bir kez gösterir (32 onaltılık karakter), veritabanına yalnızca SHA-256 özetini yazar;
      anahtar **24 saat** geçerlidir ve **bir kez** kullanılır. `@RevokeUnusedKeys = 1` önceki kullanılmamış anahtarları iptal eder. Uygulama anahtar üretemez.
@@ -51,7 +51,8 @@ Projeyi çalıştırmak için aşağıdaki adımları takip edin:
 
 - An **empty** database opens the first-run setup; the first teacher is created without a key.
 - A setup key is accepted only while **no teacher can sign in with a password**: for the first teacher of a database that has students,
-  for the first password of a teacher without one, and for a passwordless student enrolled in no course. Once a teacher has a password, no key is accepted.
+  for the first password of a teacher without one, and only for a passwordless student enrolled in no course (for an enrolled student the key is refused
+  and stays unused; the course's teacher issues a code). Once a teacher has a password, no key is accepted.
 - Only the **database owner** creates keys: `sqlcmd -S <server> -d <database> -E -i docs\issue-setup-key.sql`. The script shows a 128 bit key once
   (32 hexadecimal characters) and stores only its SHA-256 hash; the key works for **24 hours**, **once**. `@RevokeUnusedKeys = 1` revokes earlier unused keys.
   The application cannot create keys.

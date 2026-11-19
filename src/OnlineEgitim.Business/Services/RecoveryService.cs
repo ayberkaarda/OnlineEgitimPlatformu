@@ -14,9 +14,10 @@ public sealed record RecoveryCode(string Code, DateTime ExpiresUtc);
 /// Verified recovery of accounts that have no password (<see cref="PasswordFormat.None"/>, kept from the
 /// original application). An empty or any other password never signs them in; instead a teacher issues
 /// a single use, expiring code for a student of their own courses. While no teacher can sign in with a
-/// password, the founder's setup key sets the first password of a teacher, or of a student (the only
-/// way for a student who is enrolled in no course). The account keeps its id and with it its courses
-/// and enrollments.
+/// password, the founder's setup key sets the first password of a teacher, or of a student who is
+/// enrolled in no course (such a student has no teacher who could issue a code). An enrolled student is
+/// never recovered with the key: the course's teacher issues the code. The account keeps its id and
+/// with it its courses and enrollments.
 /// </summary>
 public interface IRecoveryService
 {
@@ -31,6 +32,8 @@ public interface IRecoveryService
     /// <summary>
     /// Sets the first password of a student and signs the student in, with the code a teacher issued
     /// or, while no teacher can sign in with a password, with the setup key (told apart by their form).
+    /// The setup key works only for a student enrolled in no course; for an enrolled student it is
+    /// refused like a wrong key and stays unused.
     /// </summary>
     Task<UserSession> RecoverStudentAsync(string? fullName, string? code, string? password, string? passwordRepeat, CancellationToken cancellationToken = default);
 
@@ -98,7 +101,7 @@ internal sealed class RecoveryService(
         ValidateNewPassword(name, code, password, passwordRepeat);
         if (SetupKeyPolicy.TryNormalize(code, out _))
         {
-            // A setup key, not a code: the founder's way, also for a student enrolled in no course.
+            // A setup key, not a code: the founder's way, for a student enrolled in no course only.
             return await RecoverWithSetupKeyAsync(AccountRole.Student, code, name!, password!, cancellationToken).ConfigureAwait(false);
         }
 
