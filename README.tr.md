@@ -480,3 +480,7 @@ Hedef makinede .NET 10 Desktop Runtime gerekir. `appsettings.json` dosyasını `
 ---
 
 **Not:** Bu proje eğitim amaçlı bir çalışmadır ve daha ileri düzey özelliklerle geliştirilmeye açıktır.
+
+## Lisans
+
+[MIT Lisansı](LICENSE) ile yayımlanmıştır.

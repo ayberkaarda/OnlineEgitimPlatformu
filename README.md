@@ -485,3 +485,7 @@ The target machine needs the .NET 10 Desktop Runtime. Put `appsettings.json` nex
 ---
 
 **Note:** This is an educational project and is open to further development.
+
+## License
+
+Released under the [MIT License](LICENSE).
