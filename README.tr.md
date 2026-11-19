@@ -264,7 +264,10 @@ Tasarım zamanı fabrikası `EGITIM_CONNECTION` değişkenini okur, yoksa yerel 
   ```
 
   Betik veritabanı sahibinden başkası için çalışmaz; `TR_Egitmenler_Rol` tetikleyicisi de bir hesabı yöneticiliğe
-  yükselten her değişikliği, sahip yapmadıkça reddeder. Uygulama login'i yönetici yapamaz. Yükseltilen öğretmenin
+  yükselten her değişikliği, sahip yapmadıkça reddeder. Sahip dışında herkes için, doğrudan SQL kullanan uygulama
+  login'i dahil, başka bir yönetici varken ya da şifreli başka bir öğretmen veya yönetici varken yeni yönetici
+  eklemeyi de reddeder; böyle bir login'in ekleyebileceği tek yönetici, uygulamanın da izin verdiği durumda kurulumun
+  ilk yöneticisidir. Yükseltilen öğretmenin
   oturumları kapanır; yönetici ders vermez, o öğretmenin kursları katalogda kalır ama hesap yeniden öğretmen olana
   kadar düzenlenemez.
 - Anahtarı **yalnızca veritabanı sahibi** (db_owner veya DBA) üretir:
@@ -336,6 +339,10 @@ o zaman ve yalnızca veritabanında henüz hiç hesap veya kurs yokken açılı�
 |---|---|---|
 | Öğretmen | `Deniz Örnek` (Yazılım), `Ece Taslak` (Tasarım) | `Demo.Ogretmen1`, `Demo.Ogretmen2` |
 | Öğrenci | `Mert Deneme`, `Selin Deneme` | `Demo.Ogrenci1`, `Demo.Ogrenci2` |
+
+Demo modu **yönetici eklemez**. Demo öğretmenleri şifreyle giriş yaptığı için kurulum anahtarı da kabul edilmez: demo
+veritabanında yönetici panelini açmak için veritabanı sahibi demo öğretmenlerinden birini `docs/promote-admin.sql`
+ile yönetici yapar (bkz. 3. bölüm).
 
 Gerçek veri içeren bir veritabanında demo modunu asla açmayın.
 

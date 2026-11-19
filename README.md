@@ -269,8 +269,10 @@ The design-time factory reads `EGITIM_CONNECTION` and otherwise uses a local SQL
   ```
 
   The script refuses to run for anyone but the database owner, and the database trigger `TR_Egitmenler_Rol`
-  refuses any change that raises an account to administrator unless the owner makes it, so the application's login
-  cannot make administrators. The promoted teacher's sessions end; an administrator does not teach, so that
+  refuses any change that raises an account to administrator unless the owner makes it. For anyone else, also the
+  application's login with direct SQL, it refuses a new administrator while another administrator exists or another
+  teacher or administrator has a password; the only administrator such a login can add is the first one of the
+  setup, in the same case where the application allows it. The promoted teacher's sessions end; an administrator does not teach, so that
   teacher's courses stay in the catalogue but can be edited again only after the account is a teacher again.
 - Only the **database owner** (db_owner or DBA) creates keys:
 
@@ -344,6 +346,10 @@ accounts and courses added on start:
 |---|---|---|
 | Teacher | `Deniz Örnek` (Yazılım), `Ece Taslak` (Tasarım) | `Demo.Ogretmen1`, `Demo.Ogretmen2` |
 | Student | `Mert Deneme`, `Selin Deneme` | `Demo.Ogrenci1`, `Demo.Ogrenci2` |
+
+Demo mode adds **no administrator**. Its teachers sign in with passwords, so no setup key is accepted either: to open
+the administrator panel on a demo database, the database owner makes one of the demo teachers an administrator with
+`docs/promote-admin.sql` (see [section 3](#3-first-run-the-first-administrator-and-the-setup-key)).
 
 Never switch demo mode on for a database with real data.
 
