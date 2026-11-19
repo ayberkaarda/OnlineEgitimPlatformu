@@ -8,16 +8,17 @@ Bu proje, **C#** kullanılarak geliştirilen bir **Online Eğitim Platformu** uy
 
 Projeyi çalıştırmak için aşağıdaki adımları takip edin:
 
-1. **Veritabanını Restore Edin:**
-   - Proje klasöründe bulunan `OnlineEgitim.bak` dosyasını kendi **SQL Server** ortamınıza restore edin.
+1. **Gereksinimler:**
+   - .NET 10 SDK ve bir **SQL Server** örneği (ör. SQL Server Express).
 
-2. **Sunucu Ayarlarını Güncelleyin:**
-   - `Databasehelper.cs` dosyasını açın.
-   - `SqlConnection` bağlantı cümlesindeki **sunucu adını** kendi bilgisayarınıza uygun şekilde güncelleyin.
+2. **Bağlantı Ayarını Yapın:**
+   - `src/OnlineEgitim.UI/appsettings.example.json` dosyasını aynı klasörde `appsettings.json` adıyla kopyalayıp bağlantı cümlesindeki **sunucu adını** kendi ortamınıza göre düzenleyin
+     (bu dosya git'e eklenmez). Alternatif olarak `EGITIM_CONNECTION` ortam değişkenini veya `dotnet user-secrets` kullanabilirsiniz.
 
-3. **Visual Studio'da Projeyi Başlatın:**
-   - Çözümü Visual Studio ile açın ve projeyi çalıştırın.
-
+3. **Projeyi Başlatın:**
+   - `dotnet run --project src/OnlineEgitim.UI` komutunu çalıştırın ya da çözümü Visual Studio ile açın.
+   - Veritabanı ilk çalıştırmada EF Core migration'larıyla otomatik oluşturulur. Eski uygulamanın veritabanı varsa veriler korunarak yerinde yükseltilir.
+   - Yeni bir veritabanında hazır hesap yoktur: ilk açılışta **İlk Kurulum** ekranında ilk öğretmen hesabını kendi belirlediğiniz şifreyle oluşturun.
 ---
 
 ## 👨‍🎓 Öğrenci Özellikleri
