@@ -183,6 +183,62 @@ public sealed class SqlServerConcurrencyTests
         Assert.Equal(1, provider.SetupKey().Consumed);
     }
 
+    /// <summary>
+    /// The demo seed has found the database empty and is about to write its accounts when a founder's
+    /// setup starts on a second instance. The setup must wait for the seed and then find a teacher; the
+    /// two may never both write (demo accounts next to a real teacher).
+    /// </summary>
+    [Fact]
+    public async Task DemoSeed_SetupBetweenCheckAndWrite_DoesNotMix()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await SqlServerTestDatabase.ReserveAsync(ct);
+        await using var setupInstance = database.BuildServices();
+        Task<UserSession>? setup = null;
+        var hook = new SaveHook(
+            e => e is Domain.Entities.Teacher,
+            async token =>
+            {
+                setup = Task.Run(
+                    () => setupInstance.GetRequiredService<ISetupService>()
+                        .CreateFirstTeacherAsync(TestSetupKey.Key, "Gerçek Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", token),
+                    token);
+                await WaitUntilBlockedOrDoneAsync(database, setup, token);
+            });
+        await using var demoInstance = database.BuildServices(
+            options: new DataAccessOptions { SeedDemoData = true },
+            configureContext: b => b.AddInterceptors(hook));
+
+        await demoInstance.GetRequiredService<IDatabaseInitializer>().InitializeAsync(ct);
+
+        Assert.True(hook.Fired);
+        var refused = await Assert.ThrowsAsync<BusinessRuleException>(() => setup!);
+        Assert.Equal(SetupService.AlreadyDone, refused.Message);
+        Assert.Equal(2, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Egitmenler", ct));
+        Assert.Equal(0, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Egitmenler WHERE AdSoyad = N'Gerçek Kurucu'", ct));
+        Assert.Equal(3, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Dersler", ct));
+        Assert.Equal(0, setupInstance.SetupKey().Consumed);
+    }
+
+    /// <summary>
+    /// Waits until a request on the test database is blocked by another session (the setup waiting for
+    /// the seed's locks) or <paramref name="other"/> finished without waiting.
+    /// </summary>
+    private static async Task WaitUntilBlockedOrDoneAsync(SqlServerTestDatabase database, Task other, CancellationToken ct)
+    {
+        const string Blocked = "SELECT COUNT(*) FROM sys.dm_exec_requests WHERE blocking_session_id <> 0 AND database_id = DB_ID(@name)";
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (!other.IsCompleted && DateTime.UtcNow < deadline)
+        {
+            if (await SqlServerTestDatabase.ScalarAsync(database.Server, Blocked, ct, ("@name", database.Name)) > 0)
+            {
+                return;
+            }
+
+            await Task.Delay(20, ct);
+        }
+    }
+
     private static async Task<ServiceProvider> InitializeAsync(SqlServerTestDatabase database, CancellationToken ct)
     {
         var provider = database.BuildServices();

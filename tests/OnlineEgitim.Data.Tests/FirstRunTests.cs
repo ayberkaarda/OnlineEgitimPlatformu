@@ -126,6 +126,43 @@ public sealed class FirstRunTests
         Assert.Equal(2, (await db.Get<ICourseService>().GetTeachingAsync(teacher, Ct)).Count);
     }
 
+    /// <summary>
+    /// The demo accounts are written, then writing the courses fails: nothing of the demo data may stay,
+    /// so the next start finds an empty database and writes all of it.
+    /// </summary>
+    [Fact]
+    public async Task DemoSeed_FailureAfterAccounts_RollsBackEverything()
+    {
+        var failure = SaveHook.FailOnce(e => e is Domain.Entities.Course);
+        await using var db = new SqliteDatabase(seed: false, new DataAccessOptions { SeedDemoData = true }, b => b.AddInterceptors(failure));
+
+        var error = await Assert.ThrowsAsync<DatabaseInitializationException>(() => db.InitializeAsync().AsTask());
+
+        Assert.IsType<InjectedFailureException>(error.InnerException);
+        Assert.True(failure.Fired);
+        await using (var context = db.CreateContext())
+        {
+            Assert.Equal(0, await context.Teachers.CountAsync(Ct));
+            Assert.Equal(0, await context.Students.CountAsync(Ct));
+            Assert.Equal(0, await context.Courses.CountAsync(Ct));
+            Assert.Equal(0, await context.Notes.CountAsync(Ct));
+            Assert.Equal(0, await context.Enrollments.CountAsync(Ct));
+        }
+
+        Assert.True(await db.Get<ISetupService>().IsSetupRequiredAsync(Ct));
+
+        // The next start completes the demo data.
+        await db.Get<IDatabaseInitializer>().InitializeAsync(Ct);
+        await using (var context = db.CreateContext())
+        {
+            Assert.Equal(2, await context.Teachers.CountAsync(Ct));
+            Assert.Equal(2, await context.Students.CountAsync(Ct));
+            Assert.Equal(3, await context.Courses.CountAsync(Ct));
+            Assert.Equal(2, await context.Notes.CountAsync(Ct));
+            Assert.Equal(1, await context.Enrollments.CountAsync(Ct));
+        }
+    }
+
     [Fact]
     public async Task Initialize_DemoRequested_LeavesADatabaseWithAccountsAlone()
     {

@@ -1,5 +1,6 @@
 using System.Globalization;
 using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 
@@ -54,10 +55,19 @@ internal sealed class SqlServerTestDatabase : IAsyncDisposable
     /// The application's services on this database. Each provider has its own connection pool, so
     /// two providers behave like two application instances.
     /// </summary>
-    public ServiceProvider BuildServices(Action<IServiceCollection>? configure = null, Persistence.DataAccessOptions? options = null)
+    public ServiceProvider BuildServices(
+        Action<IServiceCollection>? configure = null,
+        Persistence.DataAccessOptions? options = null,
+        Action<Microsoft.EntityFrameworkCore.DbContextOptionsBuilder>? configureContext = null)
     {
         var services = new ServiceCollection();
-        services.AddSqlServerDataAccess(ConnectionString, options);
+        services.AddDataAccess(
+            builder =>
+            {
+                builder.UseSqlServer(ConnectionString);
+                configureContext?.Invoke(builder);
+            },
+            options);
         services.AddTestBusinessServices(Clock);
         configure?.Invoke(services);
         return services.BuildServiceProvider();

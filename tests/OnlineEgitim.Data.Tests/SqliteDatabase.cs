@@ -12,7 +12,7 @@ namespace OnlineEgitim.Data.Tests;
 /// comes from the EF Core model; the test data of <see cref="TestServices.SeedAsync"/> is added unless
 /// <paramref name="seed"/> is false.
 /// </summary>
-public sealed class SqliteDatabase(bool seed = true, DataAccessOptions? options = null) : IAsyncLifetime
+public sealed class SqliteDatabase(bool seed = true, DataAccessOptions? options = null, Action<DbContextOptionsBuilder>? configureContext = null) : IAsyncLifetime
 {
     private readonly SqliteConnection _connection = new("Data Source=:memory:");
     private ServiceProvider? _provider;
@@ -32,7 +32,13 @@ public sealed class SqliteDatabase(bool seed = true, DataAccessOptions? options 
         await _connection.OpenAsync();
 
         var services = new ServiceCollection();
-        services.AddDataAccess(builder => builder.UseSqlite(_connection), options);
+        services.AddDataAccess(
+            builder =>
+            {
+                builder.UseSqlite(_connection);
+                configureContext?.Invoke(builder);
+            },
+            options);
         services.AddTestBusinessServices(Clock);
         _provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true });
 

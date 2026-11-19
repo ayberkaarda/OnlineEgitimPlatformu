@@ -1,3 +1,4 @@
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 using OnlineEgitim.Domain.Entities;
 
@@ -17,13 +18,18 @@ namespace OnlineEgitim.Data.Persistence;
 /// </remarks>
 internal static class DemoData
 {
+    /// <summary>
+    /// Adds all of the demonstration data or nothing: the emptiness check and every write run in one
+    /// serializable transaction that takes the locks of the first-run setup, so a setup started at the
+    /// same time waits and then finds the demo teachers, and a failure leaves the database empty for
+    /// the next start.
+    /// </summary>
     public static async Task<bool> SeedIfEmptyAsync(EgitimDbContext db, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(db);
 
-        if (await db.Teachers.AnyAsync(cancellationToken).ConfigureAwait(false)
-            || await db.Students.AnyAsync(cancellationToken).ConfigureAwait(false)
-            || await db.Courses.AnyAsync(cancellationToken).ConfigureAwait(false))
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken).ConfigureAwait(false);
+        if (await AccountLocks.AnyAccountOrCourseLockedAsync(db, cancellationToken).ConfigureAwait(false))
         {
             return false;
         }
@@ -47,6 +53,7 @@ internal static class DemoData
             new CourseNote { CourseId = web.Id, Content = "Ödev: kendinizi tanıtan bir sayfa hazırlayın." });
         db.Enrollments.Add(new Enrollment { StudentId = mert.Id, CourseId = programming.Id });
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         return true;
     }
 

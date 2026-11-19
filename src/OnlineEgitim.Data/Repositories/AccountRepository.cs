@@ -125,7 +125,7 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
             // setups can never both insert. On SQL Server the check takes an update lock, which a second
             // setup has to wait for, so the loser sees the winner's row instead of becoming a deadlock victim.
             await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken).ConfigureAwait(false);
-            if (await AnyTeacherLockedAsync(db, cancellationToken).ConfigureAwait(false))
+            if (await AccountLocks.AnyTeacherLockedAsync(db, cancellationToken).ConfigureAwait(false))
             {
                 return new FirstTeacherResult(FirstTeacherStatus.TeacherExists, 0);
             }
@@ -169,22 +169,6 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
             .Select(t => new TeacherProfile(t.Id, t.FullName, t.Specialty))
             .SingleOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
-    }
-
-    private static async Task<bool> AnyTeacherLockedAsync(EgitimDbContext db, CancellationToken cancellationToken)
-    {
-        if (!db.Database.IsSqlServer())
-        {
-            return await db.Teachers.AnyAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-#pragma warning disable EF1002 // Constant statement without any input.
-        var count = await db.Database
-            .SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM dbo.Egitmenler WITH (UPDLOCK, HOLDLOCK)")
-            .SingleAsync(cancellationToken)
-            .ConfigureAwait(false);
-#pragma warning restore EF1002
-        return count > 0;
     }
 
     private static Task<AccountCredentials?> FindAsync<TAccount>(DbSet<TAccount> accounts, string fullName, CancellationToken cancellationToken)
