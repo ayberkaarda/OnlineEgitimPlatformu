@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -8,7 +8,7 @@
     <AssemblyName>OnlineEgitim</AssemblyName>
     <Product>Online Eğitim</Product>
     <NeutralLanguage>tr-TR</NeutralLanguage>
-    <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationIcon>..\..\assets\app.ico</ApplicationIcon>
     <UserSecretsId>online-egitim-ui</UserSecretsId>
   </PropertyGroup>

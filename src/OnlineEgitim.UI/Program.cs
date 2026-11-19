@@ -7,6 +7,7 @@ using OnlineEgitim.Data;
 using OnlineEgitim.Data.Persistence;
 using OnlineEgitim.Domain.Entities;
 using OnlineEgitim.UI.Infrastructure;
+using OnlineEgitim.UI.Theming;
 using Serilog;
 
 namespace OnlineEgitim.UI
@@ -49,6 +50,7 @@ namespace OnlineEgitim.UI
             ApplicationConfiguration.Initialize();
 
             var configuration = BuildConfiguration();
+            ApplyTheme(AppConfiguration.ResolveTheme(configuration));
             var connectionString = AppConfiguration.ResolveConnectionString(configuration);
             if (string.IsNullOrWhiteSpace(connectionString))
             {
@@ -81,6 +83,13 @@ namespace OnlineEgitim.UI
             }
 
             var forms = serviceProvider.GetRequiredService<IFormFactory>();
+
+            // While the application runs, Windows may switch high contrast or the app mode; open screens follow.
+            using var themeWatcher = new ThemeWatcher(
+                new SystemPreferenceSource(),
+                new WindowsFormsSynchronizationContext(),
+                () => SystemInformation.HighContrast,
+                Theme.SystemPrefersDark);
             while (true)
             {
                 UserSession? session;
@@ -140,6 +149,19 @@ namespace OnlineEgitim.UI
             return signIn.ShowDialog() == DialogResult.OK ? signIn.Session : null;
         }
 
+        /// <summary>Chooses the palette; in dark mode the native parts of the controls are switched to dark too.</summary>
+        private static void ApplyTheme(ThemeMode mode)
+        {
+            var highContrast = SystemInformation.HighContrast;
+            Theme.Initialize(mode, highContrast, Theme.SystemPrefersDark());
+            if (Theme.Current.IsDark && !highContrast)
+            {
+#pragma warning disable WFO5001 // Dark mode of the native controls is marked experimental in Windows Forms.
+                Application.SetColorMode(SystemColorMode.Dark);
+#pragma warning restore WFO5001
+            }
+        }
+
         private static IConfiguration BuildConfiguration() =>
             new ConfigurationBuilder()
                 .AddSettingsFile(AppContext.BaseDirectory, AppConfiguration.SettingsFileName)
@@ -165,6 +187,22 @@ namespace OnlineEgitim.UI
 
         /// <summary>Settings key of the demonstration data switch.</summary>
         public const string DemoSettingKey = "Seed:Demo";
+
+        /// <summary>Settings key of the palette: Light (default), Dark or System.</summary>
+        public const string ThemeKey = "Appearance:Theme";
+
+        /// <summary>The <c>Appearance:Theme</c> setting (Light, Dark or System); anything else falls back to Light.</summary>
+        public static ThemeMode ResolveTheme(IConfiguration configuration)
+        {
+            ArgumentNullException.ThrowIfNull(configuration);
+
+            var value = configuration[ThemeKey]?.Trim();
+
+            // Only the names are accepted; Enum.TryParse would also take numbers.
+            return value is { Length: > 0 } && value.All(char.IsAsciiLetter) && Enum.TryParse<ThemeMode>(value, ignoreCase: true, out var mode)
+                ? mode
+                : ThemeMode.Light;
+        }
 
         /// <summary>Adds an optional JSON settings file located in <paramref name="basePath"/>.</summary>
         public static IConfigurationBuilder AddSettingsFile(this IConfigurationBuilder builder, string basePath, string fileName) =>
