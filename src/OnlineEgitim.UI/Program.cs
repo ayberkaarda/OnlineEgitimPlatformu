@@ -7,6 +7,7 @@ using OnlineEgitim.Data;
 using OnlineEgitim.Data.Persistence;
 using OnlineEgitim.Domain.Entities;
 using OnlineEgitim.UI.Infrastructure;
+using Serilog;
 
 namespace OnlineEgitim.UI
 {
@@ -18,9 +19,32 @@ namespace OnlineEgitim.UI
         [STAThread]
         private static int Main()
         {
+            Log.Logger = AppLogging.CreateLogger(AppLogging.DefaultDirectory);
+            try
+            {
+                Log.Information("Application started");
+                return Run();
+            }
+            finally
+            {
+                Log.Information("Application stopped");
+                Log.CloseAndFlush();
+            }
+        }
+
+        private static int Run()
+        {
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException += (_, e) => ErrorReporter.Show(e.Exception);
-            AppDomain.CurrentDomain.UnhandledException += (_, e) => ErrorReporter.Show(e.ExceptionObject as Exception);
+            AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            {
+                ErrorReporter.Show(e.ExceptionObject as Exception);
+                if (e.IsTerminating)
+                {
+                    Log.Fatal("Unhandled exception terminates the application");
+                    Log.CloseAndFlush();
+                }
+            };
 
             ApplicationConfiguration.Initialize();
 
@@ -28,6 +52,7 @@ namespace OnlineEgitim.UI
             var connectionString = AppConfiguration.ResolveConnectionString(configuration);
             if (string.IsNullOrWhiteSpace(connectionString))
             {
+                Log.Warning("No database connection string is configured");
                 Dialogs.Show(
                     null,
                     "Veritabanı bağlantı ayarı bulunamadı.\n\n"
@@ -98,7 +123,7 @@ namespace OnlineEgitim.UI
         {
             var services = new ServiceCollection();
             services.AddSqlServerDataAccess(connectionString, options);
-            services.AddSingleton<IAuditLog, TraceAuditLog>();
+            services.AddSingleton<IAuditLog>(new SerilogAuditLog(Log.Logger));
             services.AddBusinessServices();
             services.AddSingleton<IFormFactory, FormFactory>();
             return services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true });

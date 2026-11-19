@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using OnlineEgitim.Business;
 using OnlineEgitim.Business.Services;
+using OnlineEgitim.Business.Validation;
 using OnlineEgitim.Domain.Entities;
 using static OnlineEgitim.Data.Tests.TestServices;
 
@@ -160,7 +161,7 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         var spaces = await Assert.ThrowsAsync<BusinessRuleException>(() => Auth.SignInStudentAsync("Mert Deneme", "   ", Ct));
         var any = await Assert.ThrowsAsync<BusinessRuleException>(() => Auth.SignInStudentAsync("Mert Deneme", "herhangi", Ct));
 
-        Assert.Equal(AuthService.InputRequired, empty.Message);
+        Assert.Equal(ValidationMessages.InputRequired, empty.Message);
         Assert.Equal(AuthService.CredentialsInvalid, spaces.Message);
         Assert.Equal(AuthService.CredentialsInvalid, any.Message);
     }
@@ -295,6 +296,57 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         Assert.Null(notJoined.Students);
         Assert.Equal(1, notJoined.StudentCount);
         Assert.Equal(NotFound, missing.Message);
+    }
+
+    /// <summary>
+    /// The validators run before anything is written: an incomplete or too long course, an empty or too
+    /// long note and a note for a foreign course leave the tables as they were.
+    /// </summary>
+    [Fact]
+    public async Task InvalidCourseOrNote_WritesNothing()
+    {
+        await AssertRefusedAsync(ValidationMessages.CourseFieldsRequired, () => Courses.CreateAsync(Teacher(DenizId), "Ders", "  ", Ct));
+        await AssertRefusedAsync(ValidationMessages.CourseNameTooLong, () => Courses.CreateAsync(Teacher(DenizId), new string('d', 101), "Konu", Ct));
+        await AssertRefusedAsync(ValidationMessages.TopicTooLong, () => Courses.CreateAsync(Teacher(DenizId), "Ders", new string('k', 201), Ct));
+        await AssertRefusedAsync(ValidationMessages.NoteRequired, () => Courses.AddNoteAsync(Teacher(DenizId), DenizCourseId, " \r\n ", Ct));
+        await AssertRefusedAsync(ValidationMessages.NoteTooLong, () => Courses.AddNoteAsync(Teacher(DenizId), DenizCourseId, new string('n', 501), Ct));
+        await AssertRefusedAsync(NotFound, () => Courses.AddNoteAsync(Teacher(DenizId), EceCourseId, "Başkasının dersine not", Ct));
+
+        await using var context = _db.CreateContext();
+        Assert.Equal(2, await context.Courses.CountAsync(Ct));
+        Assert.Equal(0, await context.Notes.CountAsync(Ct));
+
+        static async Task AssertRefusedAsync(string message, Func<Task> write) =>
+            Assert.Equal(message, (await Assert.ThrowsAsync<BusinessRuleException>(write)).Message);
+    }
+
+    /// <summary>
+    /// A first password that does not pass the validator (a mismatch or a short password) neither spends
+    /// the recovery code nor counts as a failure: the right input works afterwards with the same code.
+    /// </summary>
+    [Fact]
+    public async Task Recovery_InvalidNewPassword_KeepsTheCodeAndTheAccount()
+    {
+        await AddPasswordlessStudentAsync("Kodlu Öğrenci", DenizCourseId);
+        var recovery = _db.Get<IRecoveryService>();
+        var code = await recovery.IssueStudentCodeAsync(Teacher(DenizId), "Kodlu Öğrenci", Ct);
+
+        var mismatch = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => recovery.RecoverStudentAsync("Kodlu Öğrenci", code.Code, "Yeni.Sifre1", "Yeni.Sifre2", Ct));
+        var weak = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => recovery.RecoverStudentAsync("Kodlu Öğrenci", code.Code, "kisa", "kisa", Ct));
+
+        Assert.Equal(ValidationMessages.PasswordsDoNotMatch, mismatch.Message);
+        Assert.Equal(ValidationMessages.PasswordInvalid, weak.Message);
+        await using (var context = _db.CreateContext())
+        {
+            var student = await context.Students.SingleAsync(s => s.FullName == "Kodlu Öğrenci", Ct);
+            Assert.Equal(PasswordFormat.None, student.PasswordFormat);
+            Assert.Equal(0, student.FailedLoginCount);
+            Assert.NotNull(student.RecoveryCodeHash);
+        }
+
+        Assert.True((await recovery.RecoverStudentAsync("Kodlu Öğrenci", code.Code, "Yeni.Sifre1", "Yeni.Sifre1", Ct)).IsStudent);
     }
 
     [Fact]

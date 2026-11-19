@@ -25,7 +25,9 @@ public sealed class RecoveryServiceTests
         _hasher,
         new SetupKeyGate(TimeProvider.System, new SetupKeyThrottle(TimeSpan.Zero)),
         new FakeTimeProvider(Now),
-        _audit);
+        _audit,
+        Validators.StudentName,
+        Validators.NewPassword);
 
     public static TheoryData<string> RefusedStates => ["unknown", "no code", "expired", "locked", "wrong code", "has password"];
 

@@ -96,7 +96,8 @@ public sealed class SetupServiceTests
         _hasher,
         new SetupKeyGate(TimeProvider.System, new SetupKeyThrottle(TimeSpan.Zero)),
         new SetupKeyEnvironment(null),
-        _audit);
+        _audit,
+        Validators.FirstTeacher);
 
     /// <summary>The repository checks the key against the stored one inside its transaction, as the real one does.</summary>
     private void RepositoryCreates(int id, Action<Teacher>? stored = null) =>

@@ -219,6 +219,53 @@ public sealed class SqlServerConcurrencyTests
     }
 
     /// <summary>
+    /// A recovery starts with a valid key and then waits for the teacher lock, which another connection
+    /// holds, while the key expires. When the lock is released the key must be refused: the password
+    /// stays unset and the key unused, although it was valid when the attempt began.
+    /// </summary>
+    [Fact]
+    public async Task SetupKey_ExpiresWhileWaiting_IsRefused()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await SqlServerTestDatabase.ReserveAsync(ct);
+        await using var provider = await InitializeAsync(database, ct);
+        await database.ExecuteAsync("UPDATE dbo.Egitmenler SET Sifre = N'', SifreBicimi = 2", ct);
+        var key = await database.IssueSetupKeyAsync(ct);
+        await database.ExecuteAsync("UPDATE dbo.KurulumAnahtarlari SET SonKullanma = DATEADD(SECOND, 3, SYSUTCDATETIME())", ct);
+        const string Expired = "SELECT COUNT(*) FROM dbo.KurulumAnahtarlari WHERE SonKullanma <= SYSUTCDATETIME()";
+        Assert.Equal(0, await database.ScalarAsync(Expired, ct));
+
+        await using var holder = new Microsoft.Data.SqlClient.SqlConnection(database.ConnectionString);
+        await holder.OpenAsync(ct);
+        await using var transaction = (Microsoft.Data.SqlClient.SqlTransaction)await holder.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+        await using (var hold = new Microsoft.Data.SqlClient.SqlCommand("SELECT COUNT(*) FROM dbo.Egitmenler WITH (UPDLOCK, HOLDLOCK)", holder, transaction))
+        {
+            await hold.ExecuteScalarAsync(ct);
+        }
+
+        var recovery = Task.Run(
+            () => provider.GetRequiredService<IRecoveryService>().RecoverTeacherAsync(key, "Deniz Örnek", "Yeni.Sifre1", "Yeni.Sifre1", ct),
+            ct);
+        await WaitUntilBlockedOrDoneAsync(database, recovery, ct);
+        Assert.False(recovery.IsCompleted, "The recovery did not wait for the teacher lock.");
+
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (await database.ScalarAsync(Expired, ct) == 0 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(100, ct);
+        }
+
+        Assert.Equal(1, await database.ScalarAsync(Expired, ct));
+        Assert.False(recovery.IsCompleted);
+        await transaction.RollbackAsync(ct);
+
+        var refused = await Assert.ThrowsAsync<BusinessRuleException>(() => recovery);
+        Assert.Equal(RecoveryService.TeacherRecoveryFailed, refused.Message);
+        Assert.Equal(0, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Egitmenler WHERE SifreBicimi <> 2", ct));
+        Assert.Equal(0, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.KurulumAnahtarlari WHERE Tuketildi = 1 OR TuketimTarihi IS NOT NULL", ct));
+    }
+
+    /// <summary>
     /// The demo seed has found the database empty and is about to write its accounts when a founder's
     /// setup starts on a second instance. The setup must wait for the seed and then find a teacher; the
     /// two may never both write (demo accounts next to a real teacher).

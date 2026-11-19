@@ -1,4 +1,5 @@
 using System.Globalization;
+using FluentValidation;
 using OnlineEgitim.Business.Auditing;
 using OnlineEgitim.Business.Security;
 using OnlineEgitim.Business.Validation;
@@ -14,9 +15,10 @@ public sealed record RecoveryCode(string Code, DateTime ExpiresUtc);
 /// Verified recovery of accounts that have no password (<see cref="PasswordFormat.None"/>, kept from the
 /// original application). An empty or any other password never signs them in; instead a teacher issues
 /// a single use, expiring code for a student of their own courses. While no teacher can sign in with a
-/// password, the founder's setup key sets the first password of a teacher, or of a student (the only
-/// way for a student who is enrolled in no course). The account keeps its id and with it its courses
-/// and enrollments.
+/// password, the founder's setup key sets the first password of a teacher, or of a student who is
+/// enrolled in no course (such a student has no teacher who could issue a code). An enrolled student is
+/// never recovered with the key: the course's teacher issues the code. The account keeps its id and
+/// with it its courses and enrollments.
 /// </summary>
 public interface IRecoveryService
 {
@@ -31,6 +33,8 @@ public interface IRecoveryService
     /// <summary>
     /// Sets the first password of a student and signs the student in, with the code a teacher issued
     /// or, while no teacher can sign in with a password, with the setup key (told apart by their form).
+    /// The setup key works only for a student enrolled in no course; for an enrolled student it is
+    /// refused like a wrong key and stays unused.
     /// </summary>
     Task<UserSession> RecoverStudentAsync(string? fullName, string? code, string? password, string? passwordRepeat, CancellationToken cancellationToken = default);
 
@@ -46,9 +50,10 @@ internal sealed class RecoveryService(
     IPasswordHasher passwordHasher,
     SetupKeyGate setupKeys,
     TimeProvider timeProvider,
-    IAuditLog audit) : IRecoveryService
+    IAuditLog audit,
+    IValidator<StudentNameInput> studentNameValidator,
+    IValidator<NewPasswordInput> newPasswordValidator) : IRecoveryService
 {
-    internal const string StudentNameRequired = "Lütfen öğrencinin adını girin.";
     internal const string NoPasswordlessStudent = "Bu adla kayıtlı, şifresi olmayan bir öğrenci bulunamadı.";
     internal const string TeacherRecoveryFailed =
         "Şifre belirlenemedi. Kurulum anahtarını ve adı kontrol edin; yalnızca şifresi olmayan öğretmen hesaplarına şifre belirlenebilir.";
@@ -62,11 +67,9 @@ internal sealed class RecoveryService(
     public async Task<RecoveryCode> IssueStudentCodeAsync(UserSession teacher, string? studentName, CancellationToken cancellationToken = default)
     {
         Access.RequireRole(teacher, AccountRole.Teacher, audit);
-        var name = InputRules.Clean(studentName);
-        if (name is null || name.Length > InputRules.PersonNameMaxLength)
-        {
-            throw new BusinessRuleException(StudentNameRequired);
-        }
+        var input = StudentNameInput.Create(studentName);
+        studentNameValidator.ValidateOrThrow(input);
+        var name = input.FullName!;
 
         // One conditional write decides: a missing student, one with a password and a student who is
         // not enrolled in any course of this teacher get the same answer, and nothing changes.
@@ -94,17 +97,16 @@ internal sealed class RecoveryService(
         string? passwordRepeat,
         CancellationToken cancellationToken = default)
     {
-        var name = InputRules.Clean(fullName);
-        ValidateNewPassword(name, code, password, passwordRepeat);
+        var name = ValidateNewPassword(fullName, code, password, passwordRepeat);
         if (SetupKeyPolicy.TryNormalize(code, out _))
         {
-            // A setup key, not a code: the founder's way, also for a student enrolled in no course.
-            return await RecoverWithSetupKeyAsync(AccountRole.Student, code, name!, password!, cancellationToken).ConfigureAwait(false);
+            // A setup key, not a code: the founder's way, for a student enrolled in no course only.
+            return await RecoverWithSetupKeyAsync(AccountRole.Student, code, name, password!, cancellationToken).ConfigureAwait(false);
         }
 
         var given = CodeFormat.Normalize(code!);
 
-        var student = await accounts.FindStudentRecoveryAsync(name!, cancellationToken).ConfigureAwait(false);
+        var student = await accounts.FindStudentRecoveryAsync(name, cancellationToken).ConfigureAwait(false);
         var now = timeProvider.GetUtcNow().UtcDateTime;
         if (student is null || student.LockoutEnd > now)
         {
@@ -157,9 +159,8 @@ internal sealed class RecoveryService(
         string? passwordRepeat,
         CancellationToken cancellationToken = default)
     {
-        var name = InputRules.Clean(fullName);
-        ValidateNewPassword(name, setupKey, password, passwordRepeat);
-        return await RecoverWithSetupKeyAsync(AccountRole.Teacher, setupKey, name!, password!, cancellationToken).ConfigureAwait(false);
+        var name = ValidateNewPassword(fullName, setupKey, password, passwordRepeat);
+        return await RecoverWithSetupKeyAsync(AccountRole.Teacher, setupKey, name, password!, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -168,7 +169,7 @@ internal sealed class RecoveryService(
     /// </summary>
     private async Task<UserSession> RecoverWithSetupKeyAsync(AccountRole role, string? setupKey, string name, string password, CancellationToken cancellationToken)
     {
-        var attempt = setupKeys.CreateAttempt(setupKey) ?? throw new BusinessRuleException(AuthService.InputRequired);
+        var attempt = setupKeys.CreateAttempt(setupKey) ?? throw new BusinessRuleException(ValidationMessages.InputRequired);
         var result = await accounts.SetFirstPasswordWithSetupKeyAsync(role, name, passwordHasher.Hash(password), attempt, cancellationToken).ConfigureAwait(false);
         switch (result.Status)
         {
@@ -188,27 +189,12 @@ internal sealed class RecoveryService(
         }
     }
 
-    private static void ValidateNewPassword(string? name, string? proof, string? password, string? passwordRepeat)
+    /// <summary>Checks the input of a first password and returns the cleaned name.</summary>
+    private string ValidateNewPassword(string? fullName, string? proof, string? password, string? passwordRepeat)
     {
-        if (name is null || string.IsNullOrWhiteSpace(proof) || string.IsNullOrWhiteSpace(password) || proof.Length > 128)
-        {
-            throw new BusinessRuleException(AuthService.InputRequired);
-        }
-
-        if (name.Length > InputRules.PersonNameMaxLength)
-        {
-            throw new BusinessRuleException(AuthService.NameInvalid);
-        }
-
-        if (!string.Equals(password, passwordRepeat, StringComparison.Ordinal))
-        {
-            throw new BusinessRuleException(SetupService.PasswordsDoNotMatch);
-        }
-
-        if (password.Length is < PasswordPolicy.MinLength or > PasswordPolicy.MaxLength)
-        {
-            throw new BusinessRuleException(AuthService.PasswordInvalid);
-        }
+        var input = NewPasswordInput.Create(fullName, proof, password, passwordRepeat);
+        newPasswordValidator.ValidateOrThrow(input);
+        return input.FullName!;
     }
 
     private BusinessRuleException Refused()

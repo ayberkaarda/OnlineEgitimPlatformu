@@ -321,8 +321,7 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
     /// </summary>
     private static async Task<bool> UseSetupKeyAsync(EgitimDbContext db, SetupKeyAttempt attempt, CancellationToken cancellationToken)
     {
-        var now = attempt.Now;
-        var keys = await AccountLocks.UsableSetupKeysLockedAsync(db, now, cancellationToken).ConfigureAwait(false);
+        var keys = await AccountLocks.UsableSetupKeysLockedAsync(db, attempt.Now, cancellationToken).ConfigureAwait(false);
         if (attempt.FindMatch(keys) is not { } id)
         {
             return false;
@@ -330,6 +329,23 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
 
         // The WHERE clause is the final decision: of two transactions with the same key only one can
         // match the unused row.
+        if (db.Database.IsSqlServer())
+        {
+            // The attempt's time was taken before the transaction waited for the teacher lock, so the
+            // expiry is decided again here against the database's own clock, the one the issuing script
+            // set SonKullanma with: a key that expired while this transaction waited matches no row.
+            var used = await db.Database.ExecuteSqlAsync(
+                $"""
+                UPDATE dbo.KurulumAnahtarlari
+                SET Tuketildi = 1, TuketimTarihi = SYSUTCDATETIME()
+                WHERE AnahtarID = {id} AND Tuketildi = 0 AND SonKullanma > SYSUTCDATETIME()
+                """,
+                cancellationToken).ConfigureAwait(false);
+            return used == 1;
+        }
+
+        // Other providers (the tests' SQLite) have no lock wait and use the attempt's clock.
+        var now = attempt.Now;
         var consumed = await db.SetupKeys
             .Where(k => k.Id == id && !k.Consumed && k.ExpiresUtc > now)
             .ExecuteUpdateAsync(
@@ -366,10 +382,15 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
         return updated == 1 ? id : null;
     }
 
+    // Only a student enrolled in no course: a student of a course has that course's teacher, who issues
+    // a recovery code instead. Both statements check it, so an enrolled student matches no row, the
+    // caller rolls back and the key stays unused.
     private static async Task<int?> SetFirstStudentPasswordAsync(EgitimDbContext db, string fullName, string newPasswordHash, CancellationToken cancellationToken)
     {
         var id = await db.Students
-            .Where(s => s.FullName == fullName && s.PasswordFormat == PasswordFormat.None)
+            .Where(s => s.FullName == fullName
+                && s.PasswordFormat == PasswordFormat.None
+                && !db.Enrollments.Any(e => e.StudentId == s.Id))
             .Select(s => (int?)s.Id)
             .SingleOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -379,7 +400,9 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
         }
 
         var updated = await db.Students
-            .Where(s => s.Id == id && s.PasswordFormat == PasswordFormat.None)
+            .Where(s => s.Id == id
+                && s.PasswordFormat == PasswordFormat.None
+                && !db.Enrollments.Any(e => e.StudentId == s.Id))
             .ExecuteUpdateAsync(
                 s => s
                     .SetProperty(a => a.PasswordHash, newPasswordHash)

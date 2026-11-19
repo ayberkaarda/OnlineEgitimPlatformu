@@ -1,6 +1,7 @@
 using Moq;
 using OnlineEgitim.Business.Auditing;
 using OnlineEgitim.Business.Services;
+using OnlineEgitim.Business.Validation;
 using OnlineEgitim.Domain.Entities;
 using OnlineEgitim.Domain.Repositories;
 
@@ -18,7 +19,7 @@ public sealed class CourseServiceTests
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private CourseService Service => new(_courses.Object, _enrollments.Object, _accounts.Object, _audit);
+    private CourseService Service => new(_courses.Object, _enrollments.Object, _accounts.Object, _audit, Validators.Course, Validators.Note);
 
     [Fact]
     public async Task Details_ForeignAndMissingCourse_SameAnswerSameAuditAndNoDataRead()
@@ -134,7 +135,7 @@ public sealed class CourseServiceTests
     {
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service.CreateAsync(Sessions.Teacher(), name, topic, Ct));
 
-        Assert.Equal(CourseService.FieldsRequired, error.Message);
+        Assert.Equal(ValidationMessages.CourseFieldsRequired, error.Message);
         _courses.VerifyNoOtherCalls();
     }
 

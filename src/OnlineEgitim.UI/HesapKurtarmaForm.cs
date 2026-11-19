@@ -18,7 +18,8 @@ namespace OnlineEgitim.UI
             + "Kodla yeni şifrenizi belirlediğinizde hesabınız ve ders kayıtlarınız aynen korunur.";
 
         internal const string StudentHintWithSetupKey =
-            StudentHint + " Hiçbir derse kayıtlı değilseniz kurucu, kod yerine kurulum anahtarıyla şifrenizi belirleyebilir.";
+            StudentHint + " Yalnızca hiçbir derse kayıtlı değilseniz kurucu, kod yerine kurulum anahtarıyla şifrenizi belirleyebilir; "
+            + "bir derse kayıtlıysanız kodu o dersin öğretmeni üretir.";
 
         internal const string TeacherHint =
             "Şifreyle giriş yapabilen bir öğretmen yokken, şifresi olmayan bir öğretmen hesabına kurulum anahtarıyla şifre belirlenir. "

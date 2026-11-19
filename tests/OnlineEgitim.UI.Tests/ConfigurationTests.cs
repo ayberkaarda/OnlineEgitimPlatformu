@@ -1,7 +1,5 @@
 using Microsoft.Extensions.Configuration;
-using OnlineEgitim.Business.Auditing;
 using OnlineEgitim.Data;
-using OnlineEgitim.Domain.Entities;
 using OnlineEgitim.UI.Infrastructure;
 
 namespace OnlineEgitim.UI.Tests;
@@ -68,10 +66,6 @@ public sealed class ConfigurationTests
         Assert.Equal("EGITIM_DEMO", DataServiceCollectionExtensions.DemoEnvironmentVariable);
         Assert.Equal(expected, AppConfiguration.IsDemoRequested(configuration));
     }
-
-    [Fact]
-    public void AuditTrace_CarriesOnlyTheCodeAndTheRole() =>
-        Assert.Equal("audit auth.sign_in.failed role=teacher", TraceAuditLog.Format(AuditEvent.SignInFailed, AccountRole.Teacher));
 
     private static IConfiguration Build(Dictionary<string, string?> values) =>
         new ConfigurationBuilder().AddInMemoryCollection(values).Build();

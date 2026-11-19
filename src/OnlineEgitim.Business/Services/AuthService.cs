@@ -1,5 +1,5 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
+using FluentValidation;
 using OnlineEgitim.Business.Auditing;
 using OnlineEgitim.Business.Security;
 using OnlineEgitim.Business.Validation;
@@ -31,20 +31,10 @@ internal sealed class AuthService(
     IAccountRepository accounts,
     IPasswordHasher passwordHasher,
     TimeProvider timeProvider,
-    IAuditLog audit) : IAuthService
+    IAuditLog audit,
+    IValidator<RegistrationInput> registrationValidator,
+    IValidator<SignInInput> signInValidator) : IAuthService
 {
-    internal const string InputRequired = "Lütfen tüm alanları doldurun.";
-    internal const string RegisterFieldsRequired = "Lütfen tüm alanları doldurunuz.";
-    internal const string EmailInvalid = "Lütfen geçerli bir e-posta adresi girin.";
-
-    internal static readonly string NameInvalid = string.Create(
-        CultureInfo.InvariantCulture,
-        $"Ad soyad yalnızca harf, kesme işareti, nokta, kısa çizgi ve tek boşluk içerebilir ve en fazla {InputRules.PersonNameMaxLength} karakter olabilir.");
-
-    internal static readonly string PasswordInvalid = string.Create(
-        CultureInfo.InvariantCulture,
-        $"Şifre en az {PasswordPolicy.MinLength}, en fazla {PasswordPolicy.MaxLength} karakter olmalıdır.");
-
     // Every refused sign-in (unknown name, wrong password, no password, locked account, a lost race)
     // gets this one answer and one audit event; the lockout rule itself is stated for everyone.
     internal static readonly string CredentialsInvalid = string.Create(
@@ -63,34 +53,17 @@ internal sealed class AuthService(
         string? password,
         CancellationToken cancellationToken = default)
     {
-        var name = InputRules.Clean(fullName);
-        var mail = InputRules.Clean(email);
-        if (name is null || mail is null || string.IsNullOrWhiteSpace(password))
-        {
-            throw new BusinessRuleException(RegisterFieldsRequired);
-        }
-
-        if (!InputRules.IsValidPersonName(name))
-        {
-            throw new BusinessRuleException(NameInvalid);
-        }
-
-        if (!InputRules.IsValidEmail(mail))
-        {
-            throw new BusinessRuleException(EmailInvalid);
-        }
-
-        if (password.Length is < PasswordPolicy.MinLength or > PasswordPolicy.MaxLength)
-        {
-            throw new BusinessRuleException(PasswordInvalid);
-        }
+        var input = RegistrationInput.Create(fullName, email, password);
+        registrationValidator.ValidateOrThrow(input);
+        var name = input.FullName!;
+        var mail = input.Email!;
 
         // Derived before the check, so a taken name or address costs as much as a new account.
         var student = new Student
         {
             FullName = name,
             Email = mail,
-            PasswordHash = passwordHasher.Hash(password),
+            PasswordHash = passwordHasher.Hash(input.Password!),
             PasswordFormat = PasswordFormat.Pbkdf2,
         };
 
@@ -120,11 +93,10 @@ internal sealed class AuthService(
         string? password,
         CancellationToken cancellationToken)
     {
-        var name = InputRules.Clean(fullName);
-        if (name is null || name.Length > InputRules.PersonNameMaxLength || !IsAcceptableSignInPassword(password))
-        {
-            throw new BusinessRuleException(InputRequired);
-        }
+        var input = SignInInput.Create(fullName, password);
+        signInValidator.ValidateOrThrow(input);
+        var name = input.FullName!;
+        password = input.Password!;
 
         var account = await accounts.FindAsync(role, name, cancellationToken).ConfigureAwait(false);
         if (account is null)
@@ -184,11 +156,4 @@ internal sealed class AuthService(
         audit.Record(AuditEvent.SignInFailed, role);
         return new BusinessRuleException(CredentialsInvalid);
     }
-
-    /// <summary>
-    /// Sign-in only bounds the input by what an existing account can hold; the rules of
-    /// <see cref="PasswordPolicy"/> for new passwords would lock out legacy accounts here.
-    /// </summary>
-    private static bool IsAcceptableSignInPassword([NotNullWhen(true)] string? password) =>
-        !string.IsNullOrEmpty(password) && password.Length <= PasswordPolicy.SignInMaxLength;
 }
