@@ -53,10 +53,12 @@ internal static class AppLogging
 
 /// <summary>
 /// Writes audit events as a fixed code and a role, for example <c>Audit auth.sign_in.failed student</c>.
-/// Nothing that identifies an account, a course or a note is available here, so nothing can leak.
+/// Nothing that identifies an account, a course or a note is available here, so nothing can leak. The
+/// file is readable by the local Windows user, so codes come from <see cref="AuditCodes.ForPublicLog"/>:
+/// the outcomes that would tell whether an account exists share one code there.
 /// </summary>
 internal sealed class SerilogAuditLog(ILogger logger) : IAuditLog
 {
     public void Record(AuditEvent auditEvent, AccountRole? role) =>
-        logger.Information("Audit {Code} {Role}", AuditCodes.Of(auditEvent), AuditCodes.Of(role));
+        logger.Information("Audit {Code} {Role}", AuditCodes.ForPublicLog(auditEvent), AuditCodes.Of(role));
 }

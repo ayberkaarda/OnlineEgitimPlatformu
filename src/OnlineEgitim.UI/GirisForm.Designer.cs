@@ -81,7 +81,7 @@ namespace OnlineEgitim.UI
             this.btnOgretmenGiris.Name = "btnOgretmenGiris";
             this.btnOgretmenGiris.Size = new System.Drawing.Size(165, 36);
             this.btnOgretmenGiris.TabIndex = 5;
-            this.btnOgretmenGiris.Text = "Öğretmen Giriş";
+            this.btnOgretmenGiris.Text = "Öğretmen / Yönetici";
             this.btnOgretmenGiris.UseVisualStyleBackColor = true;
             this.btnOgretmenGiris.Click += new System.EventHandler(this.btnOgretmenGiris_Click);
             // 
@@ -143,7 +143,7 @@ namespace OnlineEgitim.UI
             this.lnkKurulum.Size = new System.Drawing.Size(232, 16);
             this.lnkKurulum.TabIndex = 12;
             this.lnkKurulum.TabStop = true;
-            this.lnkKurulum.Text = "İlk öğretmen kurulumu (kurulum anahtarı)";
+            this.lnkKurulum.Text = "İlk yönetici kurulumu (kurulum anahtarı)";
             this.lnkKurulum.Visible = false;
             this.lnkKurulum.LinkClicked += new System.Windows.Forms.LinkLabelLinkClickedEventHandler(this.lnkKurulum_LinkClicked);
             // 
@@ -156,7 +156,7 @@ namespace OnlineEgitim.UI
             this.lnkKurtarma.Size = new System.Drawing.Size(150, 16);
             this.lnkKurtarma.TabIndex = 11;
             this.lnkKurtarma.TabStop = true;
-            this.lnkKurtarma.Text = "Şifresiz hesabı kurtar";
+            this.lnkKurtarma.Text = "Kodla şifre belirle";
             this.lnkKurtarma.LinkClicked += new System.Windows.Forms.LinkLabelLinkClickedEventHandler(this.lnkKurtarma_LinkClicked);
             // 
             // GirisForm

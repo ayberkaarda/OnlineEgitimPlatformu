@@ -32,18 +32,18 @@ public sealed class SaveGuardTests
 
     [Theory]
     [InlineData(SetupStage.EmptyDatabase, false, false)]
-    [InlineData(SetupStage.FirstTeacherNeedsKey, true, true)]
-    [InlineData(SetupStage.TeacherPasswordNeedsKey, false, true)]
+    [InlineData(SetupStage.FirstAdminNeedsKey, true, true)]
+    [InlineData(SetupStage.StaffPasswordNeedsKey, true, true)]
     [InlineData(SetupStage.Completed, false, false)]
     public void SignIn_FounderLinks_FollowTheSetupStage(SetupStage stage, bool setupLink, bool keyRecovery) => Run(() =>
     {
         using var form = new GirisForm(new PendingAuthService(), new NoFormsFactory());
-        Assert.False(form.OffersFirstTeacherSetup);
+        Assert.False(form.OffersFirstAdminSetup);
         Assert.False(form.OffersSetupKeyRecovery);
 
         form.Stage = stage;
 
-        Assert.Equal(setupLink, form.OffersFirstTeacherSetup);
+        Assert.Equal(setupLink, form.OffersFirstAdminSetup);
         Assert.Equal(keyRecovery, form.OffersSetupKeyRecovery);
         Assert.Contains("kurulum anahtarı", Find<LinkLabel>(form, "lnkKurulum").Text, StringComparison.Ordinal);
     });
@@ -197,7 +197,7 @@ public sealed class SaveGuardTests
         var setup = new PendingSetupService();
         using var form = new HesapKurtarmaForm(recovery, setup) { Prompts = new RecordingPrompts() };
         Assert.False(form.TeacherMode);
-        Assert.False(Find<RadioButton>(form, "rbOgretmen").Enabled); // no key is accepted by default
+        Assert.True(Find<RadioButton>(form, "rbOgretmen").Enabled); // staff accounts set a password with an administrator's code
         Assert.Equal(HesapKurtarmaForm.StudentHint, Find<Label>(form, "lblAciklama").Text);
         Find<TextBox>(form, "txtAd").Text = "Şifresiz Öğrenci";
         Find<TextBox>(form, "txtKod").Text = "ABCDE-FGHJK";
@@ -214,12 +214,18 @@ public sealed class SaveGuardTests
         Assert.Null(first.Result);
         Assert.True(Find<Button>(form, "btnKurtar").Enabled);
 
+        // Without the setup key the staff mode takes the administrator's code only, and fills in nothing.
         setup.EnvironmentKey = new SetupKeyPrefill("0123-4567-89AB-CDEF-0123-4567-89AB-CDEF", false);
+        form.TeacherMode = true;
+        Assert.Equal("Kurtarma Kodu", Find<Label>(form, "lblKod").Text);
+        Assert.Equal(HesapKurtarmaForm.TeacherHint, Find<Label>(form, "lblAciklama").Text);
+        Assert.Empty(Find<TextBox>(form, "txtKod").Text);
+        form.TeacherMode = false;
+
         form.SetupKeyAccepted = true;
-        Assert.True(Find<RadioButton>(form, "rbOgretmen").Enabled);
         Assert.Equal(HesapKurtarmaForm.StudentHintWithSetupKey, Find<Label>(form, "lblAciklama").Text);
         form.TeacherMode = true;
-        Assert.Equal("Kurulum Anahtarı", Find<Label>(form, "lblKod").Text);
+        Assert.Equal("Kod / Kurulum Anahtarı", Find<Label>(form, "lblKod").Text);
         Assert.Contains("docs/issue-setup-key.sql", Find<Label>(form, "lblAciklama").Text, StringComparison.Ordinal);
         Assert.Equal("0123-4567-89AB-CDEF-0123-4567-89AB-CDEF", Find<TextBox>(form, "txtKod").Text); // filled in, checked by the database
         Find<TextBox>(form, "txtKod").Text = "KURUCU-ANAHTARI";

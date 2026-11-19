@@ -6,8 +6,8 @@ using OnlineEgitim.UI.Infrastructure;
 namespace OnlineEgitim.UI
 {
     /// <summary>
-    /// Lets the signed-in teacher issue a single use recovery code for a student account without a
-    /// password. The code is shown once in this window, never logged; only its hash is stored.
+    /// Lets the signed-in teacher issue a single use recovery code for a student of their courses: a
+    /// first password, or a new one for a student who forgot theirs. The code is shown once in this window, never logged; only its hash is stored.
     /// </summary>
     public partial class KurtarmaKoduForm : Form
     {

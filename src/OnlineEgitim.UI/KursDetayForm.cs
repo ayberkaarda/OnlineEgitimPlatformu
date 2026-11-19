@@ -73,7 +73,9 @@ namespace OnlineEgitim.UI
             else
             {
                 // Students see how many joined, not who.
-                label4.Text = string.Create(CultureInfo.InvariantCulture, $"Kayıtlı Öğrenci Sayısı: {details.StudentCount}");
+                label4.Text = details.Capacity is { } capacity
+                    ? string.Create(CultureInfo.InvariantCulture, $"Kayıtlı Öğrenci Sayısı: {details.StudentCount} / {capacity}")
+                    : string.Create(CultureInfo.InvariantCulture, $"Kayıtlı Öğrenci Sayısı: {details.StudentCount}");
                 lstOgrenciler.Visible = false;
                 lstOgrenciler.Items.Clear();
             }

@@ -169,7 +169,7 @@ public sealed class SqliteServiceTests : IAsyncLifetime
     [Fact]
     public async Task CreateCourse_BelongsToTheSignedInTeacherOnly()
     {
-        var id = await Courses.CreateAsync(Teacher(EceId), " Grafik ", " Renk ve biçim ", Ct);
+        var id = await Courses.CreateAsync(Teacher(EceId), " Grafik ", " Renk ve biçim ", null, Ct);
 
         var mine = await Courses.GetTeachingAsync(Teacher(EceId), Ct);
         var theirs = await Courses.GetTeachingAsync(Teacher(DenizId), Ct);
@@ -180,7 +180,7 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         Assert.Equal("Grafik", created.Name);
         Assert.Equal("Renk ve biçim", created.Topic);
         Assert.Equal("Ece Taslak", created.TeacherName);
-        await Assert.ThrowsAsync<AccessDeniedException>(() => Courses.CreateAsync(Student(MertId), "Ders", "Konu", Ct));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => Courses.CreateAsync(Student(MertId), "Ders", "Konu", null, Ct));
     }
 
     [Fact]
@@ -305,9 +305,9 @@ public sealed class SqliteServiceTests : IAsyncLifetime
     [Fact]
     public async Task InvalidCourseOrNote_WritesNothing()
     {
-        await AssertRefusedAsync(ValidationMessages.CourseFieldsRequired, () => Courses.CreateAsync(Teacher(DenizId), "Ders", "  ", Ct));
-        await AssertRefusedAsync(ValidationMessages.CourseNameTooLong, () => Courses.CreateAsync(Teacher(DenizId), new string('d', 101), "Konu", Ct));
-        await AssertRefusedAsync(ValidationMessages.TopicTooLong, () => Courses.CreateAsync(Teacher(DenizId), "Ders", new string('k', 201), Ct));
+        await AssertRefusedAsync(ValidationMessages.CourseFieldsRequired, () => Courses.CreateAsync(Teacher(DenizId), "Ders", "  ", null, Ct));
+        await AssertRefusedAsync(ValidationMessages.CourseNameTooLong, () => Courses.CreateAsync(Teacher(DenizId), new string('d', 101), "Konu", null, Ct));
+        await AssertRefusedAsync(ValidationMessages.TopicTooLong, () => Courses.CreateAsync(Teacher(DenizId), "Ders", new string('k', 201), null, Ct));
         await AssertRefusedAsync(ValidationMessages.NoteRequired, () => Courses.AddNoteAsync(Teacher(DenizId), DenizCourseId, " \r\n ", Ct));
         await AssertRefusedAsync(ValidationMessages.NoteTooLong, () => Courses.AddNoteAsync(Teacher(DenizId), DenizCourseId, new string('n', 501), Ct));
         await AssertRefusedAsync(NotFound, () => Courses.AddNoteAsync(Teacher(DenizId), EceCourseId, "Başkasının dersine not", Ct));
@@ -364,8 +364,8 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         Assert.True(studentId > SelinId);
 
         var recovery = _db.Get<IRecoveryService>();
-        var hasPassword = await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.IssueStudentCodeAsync(Teacher(DenizId), "Mert Deneme", Ct));
-        Assert.Equal(RecoveryService.NoPasswordlessStudent, hasPassword.Message);
+        var notEnrolled = await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.IssueStudentCodeAsync(Teacher(DenizId), "Mert Deneme", Ct));
+        Assert.Equal(RecoveryService.StudentNotFound, notEnrolled.Message);
 
         var expiring = await recovery.IssueStudentCodeAsync(Teacher(DenizId), "Kodsuz Öğrenci", Ct);
         Assert.Equal(_db.Clock.GetUtcNow().UtcDateTime + Business.Security.RecoveryPolicy.CodeLifetime, expiring.ExpiresUtc);
@@ -382,7 +382,9 @@ public sealed class SqliteServiceTests : IAsyncLifetime
 
         Assert.True(session.IsStudent);
         Assert.Equal(session.UserId, (await Auth.SignInStudentAsync("Kodsuz Öğrenci", "Yeni.Sifre1", Ct)).UserId);
-        await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.IssueStudentCodeAsync(Teacher(DenizId), "Kodsuz Öğrenci", Ct));
+
+        // A student with a password who forgot it gets a new code from the course's teacher.
+        Assert.NotNull(await recovery.IssueStudentCodeAsync(Teacher(DenizId), "Kodsuz Öğrenci", Ct));
     }
 
     /// <summary>
@@ -406,7 +408,7 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         var unenrolledByDeniz = await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.IssueStudentCodeAsync(Teacher(DenizId), "Derssiz Öğrenci", Ct));
         var unenrolledByEce = await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.IssueStudentCodeAsync(Teacher(EceId), "Derssiz Öğrenci", Ct));
 
-        Assert.Equal(RecoveryService.NoPasswordlessStudent, missing.Message);
+        Assert.Equal(RecoveryService.StudentNotFound, missing.Message);
         Assert.Equal(missing.Message, foreign.Message);
         Assert.Equal(missing.Message, unenrolledByDeniz.Message);
         Assert.Equal(missing.Message, unenrolledByEce.Message);
@@ -456,8 +458,11 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         Assert.False(await setup.IsSetupRequiredAsync(Ct));
         Assert.Equal(SetupStage.Completed, await setup.GetStageAsync(Ct));
         var error = await Assert.ThrowsAsync<BusinessRuleException>(
-            () => setup.CreateFirstTeacherAsync(key, "Yeni Öğretmen", "Kimya", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
-        Assert.Equal(SetupService.AlreadyDone, error.Message);
+            () => setup.CreateFirstAdminAsync(key, "Yeni Öğretmen", "Kimya", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
+        Assert.Equal(SetupService.SetupKeyNotAllowed, error.Message); // such a database gets its administrator from docs/promote-admin.sql
+        var withoutKey = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => setup.CreateFirstAdminAsync(null, "Yeni Öğretmen", "Kimya", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
+        Assert.Equal(SetupService.AlreadyDone, withoutKey.Message);
         await using var context = _db.CreateContext();
         Assert.Equal(0, await ConsumedSetupKeysAsync(context, Ct)); // an existing teacher keeps the key unused
         Assert.Equal(2, await context.Teachers.CountAsync(Ct));

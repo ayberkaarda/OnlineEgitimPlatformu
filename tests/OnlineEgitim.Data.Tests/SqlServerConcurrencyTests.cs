@@ -28,7 +28,7 @@ public sealed class SqlServerConcurrencyTests
         // Several rounds make it likely that the inserts really overlap.
         for (var round = 0; round < 4; round++)
         {
-            var courseId = await courses.CreateAsync(Teacher(DenizId), "Yarış " + round, "Konu", ct);
+            var courseId = await courses.CreateAsync(Teacher(DenizId), "Yarış " + round, "Konu", null, ct);
 
             var results = await RaceAsync(Contenders, () => service.EnrollAsync(Student(MertId), courseId, ct), ct);
 
@@ -137,7 +137,7 @@ public sealed class SqlServerConcurrencyTests
                 {
                     var slot = Interlocked.Increment(ref index) - 1;
                     var name = "Kurucu " + (char)('A' + slot);
-                    return setups[slot].CreateFirstTeacherAsync(null, name, "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", ct);
+                    return setups[slot].CreateFirstAdminAsync(null, name, "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", ct);
                 },
                 ct);
 
@@ -172,7 +172,7 @@ public sealed class SqlServerConcurrencyTests
             {
                 var slot = Interlocked.Increment(ref index) - 1;
                 var key = slot == Contenders / 2 ? founderKey : Convert.ToHexString(BitConverter.GetBytes((long)slot)) + "0000000000000000";
-                return setup.CreateFirstTeacherAsync(key, "Kurucu " + (char)('A' + slot), "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", ct);
+                return setup.CreateFirstAdminAsync(key, "Kurucu " + (char)('A' + slot), "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", ct);
             },
             ct);
 
@@ -220,8 +220,10 @@ public sealed class SqlServerConcurrencyTests
 
     /// <summary>
     /// A recovery starts with a valid key and then waits for the teacher lock, which another connection
-    /// holds, while the key expires. When the lock is released the key must be refused: the password
-    /// stays unset and the key unused, although it was valid when the attempt began.
+    /// holds; while it waits, the key expires in the database. When the lock is released the key must
+    /// be refused: the password stays unset and the key unused, although it was valid at the time of the
+    /// attempt. The attempt's time is the fixed test clock and the expiry is set while the lock is held,
+    /// so the order of events does not depend on how fast the test runs.
     /// </summary>
     [Fact]
     public async Task SetupKey_ExpiresWhileWaiting_IsRefused()
@@ -231,7 +233,6 @@ public sealed class SqlServerConcurrencyTests
         await using var provider = await InitializeAsync(database, ct);
         await database.ExecuteAsync("UPDATE dbo.Egitmenler SET Sifre = N'', SifreBicimi = 2", ct);
         var key = await database.IssueSetupKeyAsync(ct);
-        await database.ExecuteAsync("UPDATE dbo.KurulumAnahtarlari SET SonKullanma = DATEADD(SECOND, 3, SYSUTCDATETIME())", ct);
         const string Expired = "SELECT COUNT(*) FROM dbo.KurulumAnahtarlari WHERE SonKullanma <= SYSUTCDATETIME()";
         Assert.Equal(0, await database.ScalarAsync(Expired, ct));
 
@@ -249,13 +250,13 @@ public sealed class SqlServerConcurrencyTests
         await WaitUntilBlockedOrDoneAsync(database, recovery, ct);
         Assert.False(recovery.IsCompleted, "The recovery did not wait for the teacher lock.");
 
-        var deadline = DateTime.UtcNow.AddSeconds(30);
-        while (await database.ScalarAsync(Expired, ct) == 0 && DateTime.UtcNow < deadline)
-        {
-            await Task.Delay(100, ct);
-        }
-
+        // Expired now, by the database's clock; still usable at the attempt's fixed time.
+        await database.ExecuteAsync("UPDATE dbo.KurulumAnahtarlari SET SonKullanma = DATEADD(SECOND, -1, SYSUTCDATETIME())", ct);
         Assert.Equal(1, await database.ScalarAsync(Expired, ct));
+        Assert.Equal(1, await database.ScalarAsync(
+            "SELECT COUNT(*) FROM dbo.KurulumAnahtarlari WHERE SonKullanma > @attempt",
+            ct,
+            ("@attempt", database.Clock.GetUtcNow().UtcDateTime)));
         Assert.False(recovery.IsCompleted);
         await transaction.RollbackAsync(ct);
 
@@ -283,7 +284,7 @@ public sealed class SqlServerConcurrencyTests
             {
                 setup = Task.Run(
                     () => setupInstance.GetRequiredService<ISetupService>()
-                        .CreateFirstTeacherAsync(null, "Gerçek Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", token),
+                        .CreateFirstAdminAsync(null, "Gerçek Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", token),
                     token);
                 await WaitUntilBlockedOrDoneAsync(database, setup, token);
             });

@@ -9,6 +9,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Teachers edit and delete their own courses and give them a capacity (none for no limit, 0 to 1000 seats). A full
+  course refuses new students, the capacity cannot go below the students, and a deletion asks for and checks the
+  number of enrolled students; deleted courses are kept with their notes and closed enrollments. Seats are decided
+  under one `sp_getapplock` lock per course (migration `AddCourseCapacityAndLifecycle`, nullable columns).
+- Students leave a course (the seat and the notes are freed at once; joining again from the next day on) and search
+  the catalogue by name, topic and teacher with free seat and enrollment filters, literal LIKE matching and stable
+  pages; only the answer to the latest search is shown.
+- Administrator role: the first-run setup creates the first administrator; `docs/promote-admin.sql` makes a teacher
+  an administrator as the database owner, and the trigger `TR_Egitmenler_Rol` refuses promotions by anyone else.
+  Administrators search accounts, create teachers and students with a single use code instead of a password, disable
+  and enable accounts, make administrators teachers again (never the last active one) and issue reset codes
+  (migration `AddAdministration`).
+- Password change with the current password and forgotten passwords set with a single use code from an
+  administrator or the student's teacher (24 hours, hashed, shown once, never logged, wrong codes lock). Every change
+  or reset ends all sessions of the account.
+- Every service call checks the session's role, disabled flag and session version against the database, so a
+  demoted, disabled or reset account's open session can do nothing more; the panels return to the sign-in.
+- Business, SQLite and SQL Server race tests for the new rules, including the last seat, a capacity lowered during
+  enrollments, two administrators disabling each other and one code used twice.
+
 - Daily rolling file logs with Serilog under `%LOCALAPPDATA%\OnlineEgitim\logs` (files dated more than 30 days ago
   are deleted and at most 30 files are kept; tests check this with dated files). Names, e-mail addresses,
   passwords, recovery codes, setup keys, note contents and exception messages are never logged.
@@ -33,6 +53,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- The first-run setup and the setup key create the first administrator instead of the first teacher; a setup key is
+  refused while any teacher or administrator signs in with a password.
+- A teacher's recovery code also works for a student who has a password (forgotten password), and staff accounts set
+  a password with a code in "Kodla şifre belirle".
+- The test of a setup key expiring while it waits for the teacher lock is deterministic: the attempt's time is fixed
+  and the key is expired in the database while the lock is held.
+
 - The input checks written by hand in the services moved to the validators; messages, trimming and the order of the
   checks are unchanged.
 - Audit events and errors that were written to the trace output are now written to the log file; refused
@@ -43,6 +70,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   removed.
 
 ### Fixed
+
+- A new registration and one with a taken name or e-mail address wrote different audit codes to the user readable
+  log file; both now write `auth.student.registration_submitted`.
 
 - A setup key that expired while its transaction waited for the teacher lock was still accepted. The final `UPDATE`
   that uses the key up now checks the expiry against the database clock (`SYSUTCDATETIME()`): such a key is refused,

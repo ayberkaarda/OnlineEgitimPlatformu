@@ -28,7 +28,7 @@ internal static class ErrorReporter
         Record(Log.Logger, exception);
 
         // Rule and permission messages are fixed texts written for the user; they are shown as warnings.
-        if (exception is BusinessRuleException or AccessDeniedException)
+        if (exception is BusinessRuleException or AccessDeniedException or SessionExpiredException)
         {
             Dialogs.Show(owner, exception.Message, "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
@@ -48,7 +48,7 @@ internal static class ErrorReporter
         ArgumentNullException.ThrowIfNull(logger);
         ArgumentNullException.ThrowIfNull(exception);
 
-        if (exception is BusinessRuleException or AccessDeniedException)
+        if (exception is BusinessRuleException or AccessDeniedException or SessionExpiredException)
         {
             logger.Warning("Operation refused: {Type}", exception.GetType().Name);
             return;

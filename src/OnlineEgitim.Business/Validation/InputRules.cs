@@ -23,6 +23,9 @@ public static partial class InputRules
 
     public const int NoteMaxLength = 500;
 
+    /// <summary>Most seats a course can have; zero closes it to new students.</summary>
+    public const int CourseCapacityMax = 1000;
+
     /// <summary>
     /// Trims <paramref name="value"/>; returns <see langword="null"/> for null, empty or white space
     /// only input, so callers handle one "missing" case.

@@ -20,6 +20,7 @@ internal static class ValidationMessages
     public const string StudentNameRequired = "Lütfen öğrencinin adını girin.";
     public const string CourseFieldsRequired = "Lütfen tüm alanları doldurun.";
     public const string NoteRequired = "Lütfen bir kurs seçin ve not içeriğini girin.";
+    public const string SearchInvalid = "Arama ölçütleri geçersiz. Daha kısa bir metinle yeniden deneyin.";
 
     public static readonly string NameInvalid = string.Create(
         CultureInfo.InvariantCulture,
@@ -40,6 +41,10 @@ internal static class ValidationMessages
     public static readonly string TopicTooLong = string.Create(
         CultureInfo.InvariantCulture,
         $"Konu en fazla {InputRules.TopicMaxLength} karakter olabilir.");
+
+    public static readonly string CapacityInvalid = string.Create(
+        CultureInfo.InvariantCulture,
+        $"Kontenjan 0 ile {InputRules.CourseCapacityMax} arasında olmalıdır; sınırsız kontenjan için boş bırakın.");
 
     public static readonly string NoteTooLong = string.Create(
         CultureInfo.InvariantCulture,
@@ -165,6 +170,26 @@ internal sealed class NewPasswordInputValidator : AbstractValidator<NewPasswordI
     }
 }
 
+/// <summary>
+/// A password change, in this order: the current and the new password present (the current one at most
+/// as long as an existing password can be), two equal new passwords, a new password of 8 to 64 characters.
+/// </summary>
+internal sealed class ChangePasswordInputValidator : AbstractValidator<ChangePasswordInput>
+{
+    public ChangePasswordInputValidator()
+    {
+        ClassLevelCascadeMode = CascadeMode.Stop;
+
+        RuleFor(p => p)
+            .Must(p => ValidationRuleExtensions.IsAcceptableSignInPassword(p.CurrentPassword) && !string.IsNullOrWhiteSpace(p.NewPassword))
+            .WithMessage(ValidationMessages.InputRequired);
+        RuleFor(p => p.NewPasswordRepeat)
+            .Must((p, repeat) => string.Equals(p.NewPassword, repeat, StringComparison.Ordinal)).WithMessage(ValidationMessages.PasswordsDoNotMatch);
+        RuleFor(p => p.NewPassword)
+            .Must(ValidationRuleExtensions.IsValidNewPassword).WithMessage(ValidationMessages.PasswordInvalid);
+    }
+}
+
 /// <summary>The student of a recovery code: a name that fits an account.</summary>
 internal sealed class StudentNameInputValidator : AbstractValidator<StudentNameInput>
 {
@@ -177,7 +202,7 @@ internal sealed class StudentNameInputValidator : AbstractValidator<StudentNameI
 
 /// <summary>
 /// A course, in this order: name and topic present, a name of at most 100 and a topic of at most 200
-/// characters, both without control characters.
+/// characters, both without control characters, and no capacity (no limit) or 0 to 1000 seats.
 /// </summary>
 internal sealed class CourseInputValidator : AbstractValidator<CourseInput>
 {
@@ -191,7 +216,78 @@ internal sealed class CourseInputValidator : AbstractValidator<CourseInput>
             .Must(n => InputRules.IsValidText(n, InputRules.CourseNameMaxLength)).WithMessage(ValidationMessages.CourseNameTooLong);
         RuleFor(c => c.Topic)
             .Must(t => InputRules.IsValidText(t, InputRules.TopicMaxLength)).WithMessage(ValidationMessages.TopicTooLong);
+        RuleFor(c => c.Capacity)
+            .Must(c => c is null or (>= 0 and <= InputRules.CourseCapacityMax)).WithMessage(ValidationMessages.CapacityInvalid);
     }
+}
+
+/// <summary>A teacher account, in this order: both fields present, a person's name, a specialty of at most 100 characters.</summary>
+internal sealed class TeacherAccountInputValidator : AbstractValidator<TeacherAccountInput>
+{
+    public TeacherAccountInputValidator()
+    {
+        ClassLevelCascadeMode = CascadeMode.Stop;
+
+        RuleFor(t => t)
+            .Must(t => t.FullName is not null && t.Specialty is not null).WithMessage(ValidationMessages.InputRequired);
+        RuleFor(t => t.FullName)
+            .Must(InputRules.IsValidPersonName).WithMessage(ValidationMessages.NameInvalid);
+        RuleFor(t => t.Specialty)
+            .Must(s => InputRules.IsValidText(s, InputRules.SpecialtyMaxLength)).WithMessage(ValidationMessages.SpecialtyInvalid);
+    }
+}
+
+/// <summary>A student account, in this order: both fields present, a person's name, an e-mail address.</summary>
+internal sealed class StudentAccountInputValidator : AbstractValidator<StudentAccountInput>
+{
+    public StudentAccountInputValidator()
+    {
+        ClassLevelCascadeMode = CascadeMode.Stop;
+
+        RuleFor(s => s)
+            .Must(s => s.FullName is not null && s.Email is not null).WithMessage(ValidationMessages.InputRequired);
+        RuleFor(s => s.FullName)
+            .Must(InputRules.IsValidPersonName).WithMessage(ValidationMessages.NameInvalid);
+        RuleFor(s => s.Email)
+            .Must(InputRules.IsValidEmail).WithMessage(ValidationMessages.EmailInvalid);
+    }
+}
+
+/// <summary>An account search: a text no longer than a name or address, a known role or none, a page from 0 to 1,000,000 of 1 to 50 accounts.</summary>
+internal sealed class AccountSearchValidator : AbstractValidator<Services.AccountSearch>
+{
+    public AccountSearchValidator()
+    {
+        RuleFor(s => s)
+            .Must(s => (InputRules.Clean(s.Text) is not { } text || text.Length <= InputRules.EmailMaxLength)
+                && (s.Role is null || Enum.IsDefined(s.Role.Value))
+                && s.PageIndex is >= 0 and <= CourseSearchValidator.MaxPageIndex
+                && s.PageSize is >= 1 and <= Services.AccountSearch.MaxPageSize)
+            .WithMessage(ValidationMessages.SearchInvalid);
+    }
+}
+
+/// <summary>
+/// A catalogue search: texts no longer than the columns they are compared with, a page from 0 to
+/// 1,000,000 of 1 to 50 courses and a known enrollment filter.
+/// </summary>
+internal sealed class CourseSearchValidator : AbstractValidator<Services.CourseSearch>
+{
+    public const int MaxPageIndex = 1_000_000;
+
+    public CourseSearchValidator()
+    {
+        RuleFor(s => s)
+            .Must(s => Fits(s.Name, InputRules.CourseNameMaxLength)
+                && Fits(s.Topic, InputRules.TopicMaxLength)
+                && Fits(s.TeacherName, InputRules.PersonNameMaxLength)
+                && s.PageIndex is >= 0 and <= MaxPageIndex
+                && s.PageSize is >= 1 and <= Services.CourseSearch.MaxPageSize
+                && Enum.IsDefined(s.Enrollment))
+            .WithMessage(ValidationMessages.SearchInvalid);
+    }
+
+    private static bool Fits(string? text, int maxLength) => InputRules.Clean(text) is not { } clean || clean.Length <= maxLength;
 }
 
 /// <summary>

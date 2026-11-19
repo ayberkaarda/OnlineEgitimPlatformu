@@ -2,10 +2,17 @@ using OnlineEgitim.Domain.Entities;
 
 namespace OnlineEgitim.Domain.Repositories;
 
-/// <summary>Student and teacher accounts and their sign-in state.</summary>
+/// <summary>
+/// Student and staff accounts and their sign-in state. A role parameter selects the table: students
+/// are in Ogrenci, teachers and administrators (<see cref="AccountRole.Teacher"/> or
+/// <see cref="AccountRole.Admin"/>) in Egitmenler.
+/// </summary>
 public interface IAccountRepository
 {
-    /// <summary>The account of <paramref name="role"/> that signs in with <paramref name="fullName"/>.</summary>
+    /// <summary>
+    /// The account of <paramref name="role"/>'s table that signs in with <paramref name="fullName"/>,
+    /// with its own role (a staff account is a teacher or an administrator).
+    /// </summary>
     Task<AccountCredentials?> FindAsync(AccountRole role, string fullName, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -16,8 +23,8 @@ public interface IAccountRepository
 
     /// <summary>
     /// Records a successful sign-in in one conditional UPDATE: only while the account is not locked at
-    /// <paramref name="now"/> and still has the password value and format of <paramref name="verified"/>
-    /// are the failed attempts reset. When <paramref name="newPasswordHash"/> is given the stored
+    /// <paramref name="now"/>, not disabled and still has the password value, format and session version
+    /// of <paramref name="verified"/> are the failed attempts reset. When <paramref name="newPasswordHash"/> is given the stored
     /// password is replaced with it and its format becomes <see cref="PasswordFormat.Pbkdf2"/> in the
     /// same statement (upgrade of a plain text or weaker hash).
     /// </summary>
@@ -31,6 +38,18 @@ public interface IAccountRepository
         DateTime now,
         string? newPasswordHash,
         CancellationToken cancellationToken = default);
+
+    /// <summary>The sign-in state of the account with <paramref name="id"/> in <paramref name="role"/>'s table.</summary>
+    Task<AccountCredentials?> FindByIdAsync(AccountRole role, int id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Replaces the password of the account of <paramref name="verified"/> after its current password
+    /// was checked, in one conditional UPDATE: only while it still has the verified password value,
+    /// format and session version, is not locked at <paramref name="now"/> and not disabled. The session
+    /// version is increased, so every session of the account ends, and an open recovery code is removed.
+    /// </summary>
+    /// <returns><see langword="false"/> when the account changed since it was read; nothing is written then.</returns>
+    Task<bool> ChangePasswordAsync(AccountRole role, AccountCredentials verified, DateTime now, string newPasswordHash, CancellationToken cancellationToken = default);
 
     /// <summary>Whether a student signs in with <paramref name="fullName"/> or uses <paramref name="email"/>.</summary>
     Task<bool> StudentExistsAsync(string fullName, string email, CancellationToken cancellationToken = default);
@@ -48,40 +67,43 @@ public interface IAccountRepository
     Task<SetupStage> GetSetupStageAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Stores <paramref name="teacher"/> only if no teacher exists yet, atomically: of concurrent calls
-    /// at most one succeeds. An empty database needs no key. A database with students needs
-    /// <paramref name="setupKey"/>: the key is checked and used up inside the write transaction, after
-    /// the check found no teacher and while concurrent setups wait, with a conditional UPDATE. When the
-    /// write fails the key stays unused; a wrong key writes nothing. There is no way to create a key
-    /// here: keys come only from the database owner's script.
+    /// Stores <paramref name="admin"/> as an administrator only while no administrator exists and no
+    /// teacher can sign in with a password, atomically: of concurrent calls at most one succeeds. An
+    /// empty database needs no key. A database with accounts needs <paramref name="setupKey"/>: the key
+    /// is checked and used up inside the write transaction, after the checks and while concurrent setups
+    /// wait, with a conditional UPDATE. When the write fails the key stays unused; a wrong key writes
+    /// nothing. There is no way to create a key here: keys come only from the database owner's script.
     /// </summary>
-    Task<FirstTeacherResult> AddFirstTeacherAsync(Teacher teacher, SetupKeyAttempt? setupKey, CancellationToken cancellationToken = default);
+    Task<FirstAdminResult> AddFirstAdminAsync(Teacher admin, SetupKeyAttempt? setupKey, CancellationToken cancellationToken = default);
 
     Task<TeacherProfile?> GetTeacherAsync(int id, CancellationToken cancellationToken = default);
 
-    /// <summary>The recovery state of the student who signs in with <paramref name="fullName"/>.</summary>
-    Task<StudentRecoveryState?> FindStudentRecoveryAsync(string fullName, CancellationToken cancellationToken = default);
+    /// <summary>The recovery state of the account of <paramref name="role"/>'s table that signs in with <paramref name="fullName"/>.</summary>
+    Task<AccountRecoveryState?> FindRecoveryAsync(AccountRole role, string fullName, CancellationToken cancellationToken = default);
+
+    /// <summary>Role, disabled flag and session version of an account, or <see langword="null"/> when it does not exist.</summary>
+    Task<SessionState?> GetSessionStateAsync(AccountRole role, int id, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Stores a recovery code hash for the student who signs in with <paramref name="studentName"/>,
-    /// replacing an earlier one, in one conditional UPDATE: only while the account has no password
-    /// (<see cref="PasswordFormat.None"/>) and is enrolled in at least one course of teacher
-    /// <paramref name="teacherId"/>.
+    /// replacing an earlier one, in one conditional UPDATE: only while the student is not disabled and
+    /// has an active enrollment in a course of teacher <paramref name="teacherId"/>. The code sets a
+    /// first password, or a new one for a student who forgot theirs.
     /// </summary>
     /// <returns>
-    /// <see langword="false"/> when no such student exists, it has a password or it is not a student
-    /// of the teacher; nothing is written then.
+    /// <see langword="false"/> when no such student exists or it is not a student of the teacher;
+    /// nothing is written then.
     /// </returns>
     Task<bool> SetRecoveryCodeAsync(int teacherId, string studentName, string codeHash, DateTime expires, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gives the student of <paramref name="verified"/> its first password in one conditional UPDATE:
-    /// only while the account still has no password, the verified code and an unexpired code at
-    /// <paramref name="now"/>, and is not locked. The PBKDF2 hash and its format are written together
-    /// and the code is removed, so it works once.
+    /// Sets the password of the account of <paramref name="verified"/> (in <paramref name="role"/>'s
+    /// table) with its single use code in one conditional UPDATE: only while the account still has the
+    /// verified code and an unexpired code at <paramref name="now"/>, is not locked and not disabled. The PBKDF2 hash and its format are written together, the code is removed, so it
+    /// works once, and the session version is increased, so earlier sessions end.
     /// </summary>
     /// <returns><see langword="false"/> when nothing was written.</returns>
-    Task<bool> CompleteStudentRecoveryAsync(StudentRecoveryState verified, DateTime now, string newPasswordHash, CancellationToken cancellationToken = default);
+    Task<bool> CompleteRecoveryAsync(AccountRole role, AccountRecoveryState verified, DateTime now, string newPasswordHash, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gives the account of <paramref name="role"/> that signs in with <paramref name="fullName"/> and
@@ -148,24 +170,27 @@ public enum SetupKeyWriteStatus
 /// <summary>Result of a write authorized by a setup key.</summary>
 public readonly record struct SetupKeyWriteResult(SetupKeyWriteStatus Status, int AccountId);
 
-/// <summary>Outcome of <see cref="IAccountRepository.AddFirstTeacherAsync"/>.</summary>
-public enum FirstTeacherStatus
+/// <summary>Outcome of <see cref="IAccountRepository.AddFirstAdminAsync"/>.</summary>
+public enum FirstAdminStatus
 {
-    /// <summary>The teacher was stored; its id is in <see cref="FirstTeacherResult.TeacherId"/>.</summary>
+    /// <summary>The administrator was stored; its id is in <see cref="FirstAdminResult.AdminId"/>.</summary>
     Created = 0,
 
-    /// <summary>A teacher existed already; nothing was written.</summary>
-    TeacherExists = 1,
+    /// <summary>An administrator existed already; nothing was written.</summary>
+    AdminExists = 1,
 
     /// <summary>The setup key was wrong, expired or used; nothing was written.</summary>
     NotAuthorized = 2,
 
     /// <summary>The database has accounts, so a setup key is needed and none was given; nothing was written.</summary>
     KeyRequired = 3,
+
+    /// <summary>A teacher can sign in with a password, so no setup key is accepted; nothing was written.</summary>
+    SetupCompleted = 4,
 }
 
-/// <summary>Result of an attempt to store the first teacher.</summary>
-public readonly record struct FirstTeacherResult(FirstTeacherStatus Status, int TeacherId);
+/// <summary>Result of an attempt to store the first administrator.</summary>
+public readonly record struct FirstAdminResult(FirstAdminStatus Status, int AdminId);
 
 /// <summary>Raised when a sign-in name or e-mail address is already used by another account.</summary>
 public sealed class DuplicateAccountException : Exception

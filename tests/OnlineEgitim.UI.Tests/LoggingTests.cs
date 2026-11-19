@@ -198,7 +198,7 @@ public sealed partial class LoggingTests : IDisposable
 
         var teacher = await recovery.RecoverTeacherAsync(setupKey, TeacherName, TeacherPassword, TeacherPassword, Ct);
         await app.AttemptAsync(() => recovery.RecoverTeacherAsync(setupKey, TeacherName, TeacherPassword, TeacherPassword, Ct)); // key used, setup completed
-        await app.AttemptAsync(() => app.Get<ISetupService>().CreateFirstTeacherAsync(setupKey, "İkinci Kurucu", Specialty, TeacherPassword, TeacherPassword, Ct));
+        await app.AttemptAsync(() => app.Get<ISetupService>().CreateFirstAdminAsync(setupKey, "İkinci Kurucu", Specialty, TeacherPassword, TeacherPassword, Ct));
 
         await auth.RegisterStudentAsync(StudentName, Email, StudentPassword, Ct);
         await auth.RegisterStudentAsync(StudentName, Email, StudentPassword, Ct); // taken: same outcome, no account
@@ -212,7 +212,7 @@ public sealed partial class LoggingTests : IDisposable
         app.Clock.Advance(LoginPolicy.LockoutDuration + TimeSpan.FromMinutes(1));
         var student = await auth.SignInStudentAsync(StudentName, StudentPassword, Ct);
 
-        var courseId = await courses.CreateAsync(teacher, CourseName, Topic, Ct);
+        var courseId = await courses.CreateAsync(teacher, CourseName, Topic, null, Ct);
         await courses.AddNoteAsync(teacher, courseId, NoteContent, Ct);
         await app.AttemptAsync(() => courses.AddNoteAsync(student, courseId, NoteContent, Ct)); // wrong role
         await app.AttemptAsync(() => courses.AddNoteAsync(teacher, courseId + 100, NoteContent, Ct)); // not owned
@@ -226,8 +226,10 @@ public sealed partial class LoggingTests : IDisposable
         var text = app.CloseAndRead();
         Assert.Contains("Audit recovery.completed teacher", text, StringComparison.Ordinal);
         Assert.Contains("Audit recovery.failed none", text, StringComparison.Ordinal);
-        Assert.Contains("Audit auth.student.registered student", text, StringComparison.Ordinal);
-        Assert.Contains("Audit auth.student.registration_not_completed student", text, StringComparison.Ordinal);
+        // A new and a taken registration leave the same neutral entry.
+        Assert.Equal(2, Regex.Count(text, "Audit auth.student.registration_submitted student"));
+        Assert.DoesNotContain("auth.student.registered", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("registration_not_completed", text, StringComparison.Ordinal);
         // The refusal of the locked account is counted as one more failure, not as a lock.
         Assert.Equal(LoginPolicy.MaxFailedAttempts + 1, Regex.Count(text, "Audit auth.sign_in.failed student"));
         Assert.Contains("Audit auth.sign_in.succeeded student", text, StringComparison.Ordinal);
@@ -287,6 +289,86 @@ public sealed partial class LoggingTests : IDisposable
         Assert.All(outcomes, o => Assert.Equal(AuthService.CredentialsInvalid, o.Message));
     }
 
+    /// <summary>
+    /// A registration with a new name and address, with a registered name and with a registered
+    /// address, each in a log of its own: without the time stamps the entries are identical, so the
+    /// file does not tell whether someone else is registered. Only the new registration adds an
+    /// account, and the existing accounts keep their passwords.
+    /// </summary>
+    [Fact]
+    public async Task RegistrationOutcomes_LeaveIdenticalPublicLogEntries()
+    {
+        await using var app = await App.StartAsync(Path.Combine(_directory, "setup"));
+        var auth = app.Get<IAuthService>();
+        await auth.RegisterStudentAsync(StudentName, Email, StudentPassword, Ct);
+        app.CloseAndRead();
+
+        (string Name, string Email)[] attempts =
+        [
+            ("Yeni Öğrenci", "yeni@kayit.test"),
+            (StudentName, "baska@kayit.test"),
+            ("Başka Öğrenci", Email),
+        ];
+        var outcomes = new List<string[]>();
+        foreach (var (name, email) in attempts)
+        {
+            var directory = Path.Combine(_directory, outcomes.Count.ToString(CultureInfo.InvariantCulture));
+            await app.WithLogAsync(directory, async _ =>
+            {
+                await auth.RegisterStudentAsync(name, email, "Baska.Sifre1", Ct);
+                return 0;
+            });
+            outcomes.Add(Lines(File.ReadAllText(Assert.Single(Directory.GetFiles(directory))))
+                .Select(line => StampPattern().Replace(line, string.Empty))
+                .ToArray());
+        }
+
+        Assert.Equal(["[INF] Audit " + AuditCodes.RegistrationSubmitted + " student"], outcomes[0]);
+        Assert.All(outcomes, o => Assert.Equal(outcomes[0], o));
+
+        await using var db = await app.Get<IDbContextFactory<EgitimDbContext>>().CreateDbContextAsync(Ct);
+        Assert.Equal(["Deniz Örnekoğlu", "Yeni Öğrenci"], await db.Students.OrderBy(s => s.Id).Select(s => s.FullName).ToListAsync(Ct));
+        Assert.Equal(Email, await db.Students.Where(s => s.FullName == StudentName).Select(s => s.Email).SingleAsync(Ct));
+        Assert.True((await auth.SignInStudentAsync(StudentName, StudentPassword, Ct)).IsStudent);
+        await Assert.ThrowsAsync<BusinessRuleException>(() => auth.SignInStudentAsync(StudentName, "Baska.Sifre1", Ct));
+    }
+
+    /// <summary>
+    /// An administrator creates an account and issues a reset code, both codes are used, a password is
+    /// changed: the file holds codes, roles and types only, never a code, a name or a password.
+    /// </summary>
+    [Fact]
+    public async Task AdministrationAndResets_LeaveNoCodeInTheLog()
+    {
+        await using var app = await App.StartAsync(_directory);
+        var setup = app.Get<ISetupService>();
+        var admin = await setup.CreateFirstAdminAsync(null, TeacherName, Specialty, TeacherPassword, TeacherPassword, Ct);
+        var administration = app.Get<IAdministrationService>();
+        var recovery = app.Get<IRecoveryService>();
+        var auth = app.Get<IAuthService>();
+
+        var created = await administration.CreateStudentAsync(admin, StudentName, Email, Ct);
+        await app.AttemptAsync(() => recovery.RecoverStudentAsync(StudentName, "ZZZZZ-ZZZZZ", StudentPassword, StudentPassword, Ct));
+        var student = await recovery.RecoverStudentAsync(StudentName, created.Code, StudentPassword, StudentPassword, Ct);
+        await app.AttemptAsync(() => auth.ChangePasswordAsync(student, "yanlis-" + StudentPassword, "Yeni." + StudentPassword, "Yeni." + StudentPassword, Ct));
+        await auth.ChangePasswordAsync(student, StudentPassword, "Yeni." + StudentPassword, "Yeni." + StudentPassword, Ct);
+        await app.AttemptAsync(() => app.Get<ICourseService>().GetCatalogAsync(student, Ct)); // the session ended
+        var reset = await administration.IssueResetCodeAsync(admin, AccountRole.Student, student.UserId, Ct);
+        await recovery.RecoverStudentAsync(StudentName, reset.Code, StudentPassword, StudentPassword, Ct);
+
+        var text = app.CloseAndRead();
+        Assert.Contains("Audit setup.admin.created admin", text, StringComparison.Ordinal);
+        Assert.Contains("Audit admin.account.created student", text, StringComparison.Ordinal);
+        Assert.Contains("Audit auth.password.change_failed student", text, StringComparison.Ordinal);
+        Assert.Contains("Audit auth.password.changed student", text, StringComparison.Ordinal);
+        Assert.Contains("Audit auth.session.rejected student", text, StringComparison.Ordinal);
+        Assert.Contains("Audit recovery.code.issued admin", text, StringComparison.Ordinal);
+        Assert.Contains("[WRN] Operation refused: SessionExpiredException", text, StringComparison.Ordinal);
+        Assert.All(Lines(text), line => Assert.Matches(AllowedLine(), line));
+        AssertNoPersonalData(text);
+        AssertAbsent(text, created.Code, CodeFormat.Normalize(created.Code), reset.Code, CodeFormat.Normalize(reset.Code));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_directory))
@@ -320,10 +402,10 @@ public sealed partial class LoggingTests : IDisposable
     [GeneratedRegex(Stamp)]
     private static partial Regex StampPattern();
 
-    [GeneratedRegex(Stamp + @"\[INF\] Audit [a-z_]+(\.[a-z_]+)+ (student|teacher|none)$")]
+    [GeneratedRegex(Stamp + @"\[INF\] Audit [a-z_]+(\.[a-z_]+)+ (student|teacher|admin|none)$")]
     private static partial Regex AuditLine();
 
-    [GeneratedRegex(Stamp + @"(\[INF\] Audit [a-z_]+(\.[a-z_]+)+ (student|teacher|none)|\[WRN\] Operation refused: (BusinessRuleException|AccessDeniedException))$")]
+    [GeneratedRegex(Stamp + @"(\[INF\] Audit [a-z_]+(\.[a-z_]+)+ (student|teacher|admin|none)|\[WRN\] Operation refused: (BusinessRuleException|AccessDeniedException|SessionExpiredException))$")]
     private static partial Regex AllowedLine();
 
     private string WriteAndRead(Action<Serilog.ILogger> write)

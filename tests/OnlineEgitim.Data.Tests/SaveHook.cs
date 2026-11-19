@@ -69,6 +69,39 @@ internal sealed class CommitFailure : DbTransactionInterceptor
 /// A deterministic failure of the next command after <see cref="Arm"/> whose text contains all of
 /// the given fragments, for example the account write of a setup that has already used its key.
 /// </summary>
+/// <summary>
+/// Runs an action once, right before the next command whose text contains every fragment is executed:
+/// a deterministic point between a check and the write that depends on it.
+/// </summary>
+internal sealed class CommandHook(params string[] fragments) : DbCommandInterceptor
+{
+    private Func<Task>? _action;
+
+    public bool Fired { get; private set; }
+
+    public void Arm(Func<Task> action) => _action = action;
+
+    public override async ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(
+        System.Data.Common.DbCommand command,
+        CommandEventData eventData,
+        InterceptionResult<int> result,
+        CancellationToken cancellationToken = default)
+    {
+        await RunIfMatchingAsync(command);
+        return result;
+    }
+
+    private async Task RunIfMatchingAsync(System.Data.Common.DbCommand command)
+    {
+        if (_action is { } action && fragments.All(f => command.CommandText.Contains(f, StringComparison.OrdinalIgnoreCase)))
+        {
+            _action = null;
+            Fired = true;
+            await action();
+        }
+    }
+}
+
 internal sealed class CommandFailure(params string[] fragments) : DbCommandInterceptor
 {
     private int _armed;

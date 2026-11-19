@@ -31,6 +31,7 @@ public sealed class ServiceMockTests
         new SetupKeyGate(TimeProvider.System, new SetupKeyThrottle(TimeSpan.Zero)),
         new FakeTimeProvider(Now),
         _audit,
+        CurrentSessions.Instance,
         Validators.StudentName,
         Validators.NewPassword);
 
@@ -41,6 +42,7 @@ public sealed class ServiceMockTests
             .AddSingleton(_accounts.Object)
             .AddSingleton(Mock.Of<ICourseRepository>())
             .AddSingleton(Mock.Of<IEnrollmentRepository>())
+            .AddSingleton(Mock.Of<IAccountAdministrationRepository>())
             .AddBusinessServices();
         using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
 
@@ -49,6 +51,7 @@ public sealed class ServiceMockTests
         Assert.NotNull(provider.GetRequiredService<IRecoveryService>());
         Assert.NotNull(provider.GetRequiredService<ICourseService>());
         Assert.NotNull(provider.GetRequiredService<IEnrollmentService>());
+        Assert.NotNull(provider.GetRequiredService<IAdministrationService>());
         Assert.IsType<RegistrationInputValidator>(provider.GetRequiredService<FluentValidation.IValidator<RegistrationInput>>());
         Assert.IsType<NoteInputValidator>(provider.GetRequiredService<FluentValidation.IValidator<NoteInput>>());
     }
@@ -111,7 +114,7 @@ public sealed class ServiceMockTests
 
         Assert.Equal(RecoveryService.SetupKeyRecoveryFailed, error.Message);
         Assert.Equal([(AuditEvent.RecoveryFailed, (AccountRole?)null)], _audit.Events);
-        _accounts.Verify(a => a.FindStudentRecoveryAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _accounts.Verify(a => a.FindRecoveryAsync(AccountRole.Student, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -135,6 +138,7 @@ public sealed class ServiceMockTests
         _accounts.Setup(a => a.SetFirstPasswordWithSetupKeyAsync(AccountRole.Teacher, "Ada Öğretmen", "hash", It.IsAny<SetupKeyAttempt>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SetupKeyWriteResult(SetupKeyWriteStatus.Done, 5));
         _accounts.Setup(a => a.GetTeacherAsync(5, It.IsAny<CancellationToken>())).ReturnsAsync(new TeacherProfile(5, "Ada Öğretmen", "Fizik"));
+        _accounts.Setup(a => a.GetSessionStateAsync(AccountRole.Teacher, 5, It.IsAny<CancellationToken>())).ReturnsAsync(new SessionState(AccountRole.Teacher, false, 0));
 
         var session = await Recovery.RecoverTeacherAsync(Key, "Ada Öğretmen", "Yeni.Sifre1", "Yeni.Sifre1", Ct);
 

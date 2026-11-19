@@ -31,6 +31,14 @@ namespace OnlineEgitim.Data.Persistence.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<int?>("Capacity")
+                        .HasColumnType("int")
+                        .HasColumnName("Kontenjan");
+
+                    b.Property<DateTime?>("DeletedUtc")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("SilinmeTarihi");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -51,7 +59,10 @@ namespace OnlineEgitim.Data.Persistence.Migrations
 
                     b.HasIndex(new[] { "TeacherId" }, "IX_Dersler_EgitmenID");
 
-                    b.ToTable("Dersler", (string)null);
+                    b.ToTable("Dersler", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Dersler_Kontenjan", "[Kontenjan] IS NULL OR [Kontenjan] >= 0");
+                        });
                 });
 
             modelBuilder.Entity("OnlineEgitim.Domain.Entities.CourseNote", b =>
@@ -90,6 +101,10 @@ namespace OnlineEgitim.Data.Persistence.Migrations
                     b.Property<int>("CourseId")
                         .HasColumnType("int")
                         .HasColumnName("DersID");
+
+                    b.Property<DateTime?>("LeftUtc")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("AyrilmaTarihi");
 
                     b.HasKey("StudentId", "CourseId")
                         .HasName("PK_OgrenciKurslar");
@@ -146,6 +161,10 @@ namespace OnlineEgitim.Data.Persistence.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<bool>("Disabled")
+                        .HasColumnType("bit")
+                        .HasColumnName("Pasif");
+
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -185,6 +204,10 @@ namespace OnlineEgitim.Data.Persistence.Migrations
                         .HasColumnType("nvarchar(256)")
                         .HasColumnName("KurtarmaKodu");
 
+                    b.Property<int>("SessionVersion")
+                        .HasColumnType("int")
+                        .HasColumnName("OturumSurumu");
+
                     b.HasKey("Id")
                         .HasName("PK_Ogrenci");
 
@@ -211,6 +234,10 @@ namespace OnlineEgitim.Data.Persistence.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<bool>("Disabled")
+                        .HasColumnType("bit")
+                        .HasColumnName("Pasif");
+
                     b.Property<int>("FailedLoginCount")
                         .HasColumnType("int")
                         .HasColumnName("BasarisizGiris");
@@ -235,6 +262,23 @@ namespace OnlineEgitim.Data.Persistence.Migrations
                         .HasColumnType("nvarchar(256)")
                         .HasColumnName("Sifre");
 
+                    b.Property<DateTime?>("RecoveryCodeExpires")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("KurtarmaBitis");
+
+                    b.Property<string>("RecoveryCodeHash")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .HasColumnName("KurtarmaKodu");
+
+                    b.Property<int>("Role")
+                        .HasColumnType("int")
+                        .HasColumnName("Rol");
+
+                    b.Property<int>("SessionVersion")
+                        .HasColumnType("int")
+                        .HasColumnName("OturumSurumu");
+
                     b.Property<string>("Specialty")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -249,10 +293,16 @@ namespace OnlineEgitim.Data.Persistence.Migrations
 
                     b.ToTable("Egitmenler", null, t =>
                         {
+                            t.HasTrigger("TR_Egitmenler_Rol");
+
                             t.HasCheckConstraint("CK_Egitmenler_BasarisizGiris", "[BasarisizGiris] >= 0");
+
+                            t.HasCheckConstraint("CK_Egitmenler_Rol", "[Rol] IN (1, 2)");
 
                             t.HasCheckConstraint("CK_Egitmenler_SifreBicimi", "[SifreBicimi] IN (0, 1, 2)");
                         });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("OnlineEgitim.Domain.Entities.Course", b =>

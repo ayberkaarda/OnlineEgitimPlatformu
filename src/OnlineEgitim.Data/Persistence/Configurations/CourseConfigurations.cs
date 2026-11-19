@@ -8,13 +8,20 @@ internal sealed class CourseConfiguration : IEntityTypeConfiguration<Course>
 {
     public void Configure(EntityTypeBuilder<Course> builder)
     {
-        builder.ToTable("Dersler");
+        builder.ToTable("Dersler", table => table.HasCheckConstraint("CK_Dersler_Kontenjan", SchemaLimits.CapacityCheck));
 
         builder.HasKey(c => c.Id).HasName("PK_Dersler");
         builder.Property(c => c.Id).HasColumnName("DersID").ValueGeneratedOnAdd();
         builder.Property(c => c.Name).HasColumnName("DersAdi").HasMaxLength(SchemaLimits.CourseNameLength).IsRequired();
         builder.Property(c => c.TeacherId).HasColumnName("EgitmenID");
         builder.Property(c => c.Topic).HasColumnName("Konu").HasMaxLength(SchemaLimits.TopicLength);
+
+        // NULL: no limit, as every course of the original application.
+        builder.Property(c => c.Capacity).HasColumnName("Kontenjan");
+
+        // Deleting keeps the row (the application's login has no DELETE right): its notes and closed
+        // enrollments stay consistent and the course disappears from every list.
+        builder.Property(c => c.DeletedUtc).HasColumnName("SilinmeTarihi");
 
         // A teacher who still owns courses cannot be deleted.
         builder.HasOne<Teacher>()
@@ -59,6 +66,9 @@ internal sealed class EnrollmentConfiguration : IEntityTypeConfiguration<Enrollm
         builder.HasKey(e => new { e.StudentId, e.CourseId }).HasName("PK_OgrenciKurslar");
         builder.Property(e => e.StudentId).HasColumnName("OgrenciID");
         builder.Property(e => e.CourseId).HasColumnName("DersID");
+
+        // NULL while active; leaving or the deletion of the course closes the enrollment.
+        builder.Property(e => e.LeftUtc).HasColumnName("AyrilmaTarihi");
 
         builder.HasOne<Student>()
             .WithMany()

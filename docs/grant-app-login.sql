@@ -18,7 +18,9 @@ DECLARE @AppUser sysname = N'OnlineEgitimApp';
 DECLARE @user nvarchar(300) = QUOTENAME(@AppUser);
 DECLARE @sql nvarchar(max) = N'';
 
--- Accounts, courses, notes and enrollments: the application never deletes rows.
+-- Accounts, courses, notes and enrollments: the application never deletes rows (a deleted course and a
+-- left enrollment are marked, not removed). On Egitmenler the trigger TR_Egitmenler_Rol lets this login
+-- lower a role but never raise one: only the database owner makes administrators (docs/promote-admin.sql).
 SELECT @sql += N'GRANT SELECT, INSERT, UPDATE ON dbo.' + QUOTENAME(t.name) + N' TO ' + @user + N';' + NCHAR(10)
 FROM (VALUES (N'Ogrenci'), (N'Egitmenler'), (N'Dersler'), (N'Notlar'), (N'OgrenciKurslar')) AS t(name);
 

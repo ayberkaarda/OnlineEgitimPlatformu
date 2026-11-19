@@ -7,7 +7,8 @@ using OnlineEgitim.UI.Infrastructure;
 namespace OnlineEgitim.UI
 {
     /// <summary>
-    /// Student sign-in; also the entry point to the teacher sign-in and to the student registration.
+    /// Student sign-in; also the entry point to the staff (teacher and administrator) sign-in, to the
+    /// student registration and to setting a password with a code.
     /// Closes with <see cref="DialogResult.OK"/> and <see cref="Session"/> set once someone signed in.
     /// </summary>
     public partial class GirisForm : Form
@@ -39,15 +40,14 @@ namespace OnlineEgitim.UI
             Stage = SetupStage.Completed;
         }
 
-        /// <summary>The signed-in student or teacher, once the form closed with OK.</summary>
+        /// <summary>The signed-in student, teacher or administrator, once the form closed with OK.</summary>
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public UserSession? Session { get; private set; }
 
         /// <summary>
-        /// Where the setup of the database stands. The link to the first-run setup is shown only while
-        /// students exist but no teacher (<see cref="SetupStage.FirstTeacherNeedsKey"/>), and the teacher
-        /// recovery with the setup key only while no teacher can sign in with a password. The database
-        /// decides again when the key is used.
+        /// Where the setup of the database stands. The link to the first administrator's setup (with the
+        /// setup key) and the recovery with the setup key are offered only while no teacher or
+        /// administrator can sign in with a password. The database decides again when the key is used.
         /// </summary>
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         internal SetupStage Stage
@@ -56,15 +56,15 @@ namespace OnlineEgitim.UI
             set
             {
                 _stage = value;
-                lnkKurulum.Visible = OffersFirstTeacherSetup;
+                lnkKurulum.Visible = OffersFirstAdminSetup;
             }
         }
 
-        /// <summary>Whether the link to the first-run setup (with the setup key) is shown.</summary>
-        internal bool OffersFirstTeacherSetup => _stage == SetupStage.FirstTeacherNeedsKey;
+        /// <summary>Whether the link to the first administrator's setup (with the setup key) is shown.</summary>
+        internal bool OffersFirstAdminSetup => _stage is SetupStage.FirstAdminNeedsKey or SetupStage.StaffPasswordNeedsKey;
 
         /// <summary>Whether the recovery window offers the founder's recovery with the setup key.</summary>
-        internal bool OffersSetupKeyRecovery => _stage is SetupStage.FirstTeacherNeedsKey or SetupStage.TeacherPasswordNeedsKey;
+        internal bool OffersSetupKeyRecovery => _stage is SetupStage.FirstAdminNeedsKey or SetupStage.StaffPasswordNeedsKey;
 
         /// <summary>Information dialogs; replaced in tests so no window opens.</summary>
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]

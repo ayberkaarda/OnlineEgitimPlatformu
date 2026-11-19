@@ -1,4 +1,4 @@
-﻿name: ci
+name: ci
 
 on:
   push:
@@ -46,7 +46,7 @@ jobs:
       - name: Zip
         shell: pwsh
         run: |
-          Copy-Item README.md, README.tr.md, CHANGELOG.md, CHANGELOG.tr.md, docs/THREAT_MODEL.md, docs/issue-setup-key.sql, docs/grant-app-login.sql publish/
+          Copy-Item README.md, README.tr.md, CHANGELOG.md, CHANGELOG.tr.md, docs/THREAT_MODEL.md, docs/issue-setup-key.sql, docs/promote-admin.sql, docs/grant-app-login.sql publish/
           Compress-Archive -Path publish/* -DestinationPath "$($env:ARCHIVE).zip"
       - uses: actions/upload-artifact@v4
         with:

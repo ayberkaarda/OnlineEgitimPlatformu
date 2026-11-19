@@ -34,17 +34,34 @@ internal sealed record NewPasswordInput(string? FullName, string? Proof, string?
         new(InputRules.Clean(fullName), proof, password, passwordRepeat);
 }
 
+/// <summary>A signed-in account's own password change; every password is kept exactly as typed.</summary>
+internal sealed record ChangePasswordInput(string? CurrentPassword, string? NewPassword, string? NewPasswordRepeat);
+
 /// <summary>The student a teacher issues a recovery code for. The name is cleaned.</summary>
 internal sealed record StudentNameInput(string? FullName)
 {
     public static StudentNameInput Create(string? fullName) => new(InputRules.Clean(fullName));
 }
 
-/// <summary>A new course. Name and topic are cleaned.</summary>
-internal sealed record CourseInput(string? Name, string? Topic)
+/// <summary>A teacher account an administrator creates. Name and specialty are cleaned.</summary>
+internal sealed record TeacherAccountInput(string? FullName, string? Specialty)
 {
-    public static CourseInput Create(string? name, string? topic) =>
-        new(InputRules.Clean(name), InputRules.Clean(topic));
+    public static TeacherAccountInput Create(string? fullName, string? specialty) =>
+        new(InputRules.Clean(fullName), InputRules.Clean(specialty));
+}
+
+/// <summary>A student account an administrator creates. Name and e-mail address are cleaned.</summary>
+internal sealed record StudentAccountInput(string? FullName, string? Email)
+{
+    public static StudentAccountInput Create(string? fullName, string? email) =>
+        new(InputRules.Clean(fullName), InputRules.Clean(email));
+}
+
+/// <summary>A new or changed course. Name and topic are cleaned; no capacity means no limit.</summary>
+internal sealed record CourseInput(string? Name, string? Topic, int? Capacity)
+{
+    public static CourseInput Create(string? name, string? topic, int? capacity = null) =>
+        new(InputRules.Clean(name), InputRules.Clean(topic), capacity);
 }
 
 /// <summary>A note for a course. The content is cleaned (trimmed at both ends, inner line breaks kept).</summary>

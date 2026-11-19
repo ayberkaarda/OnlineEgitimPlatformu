@@ -2,9 +2,9 @@
 
 🇬🇧 [English](README.md) · 🇹🇷 **Türkçe**
 
-.NET 10 ve SQL Server ile geliştirilmiş, öğrenci ve öğretmen için ayrı panelleri olan bir Windows Forms uygulaması:
-öğrenciler kayıt olur, kursları inceler, kurslara katılır ve notlarını okur; öğretmenler kurs oluşturur, not ekler ve
-kimlerin katıldığını görür. Kod Domain, Business, Data ve UI katmanlarına ayrılmıştır; veritabanı erişimi EF Core ile
+.NET 10 ve SQL Server ile geliştirilmiş, öğrenci, öğretmen ve yönetici için ayrı panelleri olan bir Windows Forms
+uygulaması: öğrenciler kayıt olur, kursları arar, kurslara katılır ve ayrılır, notlarını okur; öğretmenler kontenjanlı
+kurslarını oluşturur, düzenler ve siler, not ekler ve kimlerin katıldığını görür; yöneticiler hesapları yönetir. Kod Domain, Business, Data ve UI katmanlarına ayrılmıştır; veritabanı erişimi EF Core ile
 yapılır, veritabanı açılışta otomatik oluşturulur ve güncellenir.
 
 > Uygulamanın arayüzü Türkçedir. Aşağıda ekran ve düğme adları Türkçe etiketleriyle, ardından İngilizce
@@ -19,20 +19,48 @@ yapılır, veritabanı açılışta otomatik oluşturulur ve güncellenir.
 - ✅ **Kayıt** ("Öğrenci Kayıt", Student Registration): ad, e-posta adresi ve 8-64 karakterlik şifre. Kullanılan bir
   ad veya e-posta adresi yeni bir kayıt gibi sonuçlanır; ekran birinin hesabı olup olmadığını söylemez.
 - ✅ **Giriş** ("Öğrenci Girişi", Student Sign-in): ad ("İsim Soyisim") ve şifreyle.
-- ✅ **Kurs listesi** ("Öğrenci Paneli", Student Panel): tüm kurslar, öğretmenleriyle.
-- ✅ **Kursa katılma** ("Ders Seç", Join Course); bir kursa bir kez katılınır.
+- ✅ **Kurs listesi** ("Öğrenci Paneli", Student Panel): tüm kurslar, öğretmenleri ve kontenjanlarıyla; kurs adı
+  ("Kurs adı"), konu ("Konu") ve öğretmene ("Öğretmen") göre **arama**, boş kontenjan ("Yalnız boş yeri olanlar") ve
+  kayıt durumu ("Kayıt") filtreleri, 20'şerlik sayfalar ("< Önceki" / "Sonraki >"). Yazılan `%`, `_` ve `[` olduğu
+  gibi aranır; sıralama (ad, sonra kimlik) sayfadan sayfaya kararlıdır.
+- ✅ **Kursa katılma** ("Ders Seç", Join Course), boş yer varken; bir kursa bir kez katılınır.
+- ✅ **Kurstan ayrılma** ("Dersten Ayrıl", Leave Course): yer hemen boşalır ve kursun notları öğrenciye kapanır. Aynı
+  kursa yeniden kayıt ertesi günden itibaren, yine yalnızca boş yer varken mümkündür.
 - ✅ **Kurs detayları** ("Kurs Detayları", Course Details): ad, konu, öğretmen ve öğrenci sayısı; notlar yalnızca
   öğrencinin katıldığı kurslarda. Öğrenciler diğer öğrencilerin adlarını hiçbir zaman görmez.
 - ✅ **Kurslarım** ("Kurslarım", My Courses) ve notları ("Kurs Notları", Course Notes).
+- ✅ **Şifremi değiştir** ("Şifremi Değiştir", Change My Password), mevcut şifreyle; hesabın tüm açık oturumları
+  kapanır ve uygulama girişe döner.
 
 ### Öğretmen paneli
 
-- ✅ **Giriş** ("Öğretmen Giriş", Teacher Sign-in): ad ve şifreyle.
-- ✅ **Yeni kurs** ("Yeni Kurs Ekle", Add Course): ad ve konu; kurs her zaman giriş yapan öğretmene aittir.
+- ✅ **Giriş** ("Öğretmen / Yönetici Girişi", Teacher / Administrator Sign-in): ad ve şifreyle.
+- ✅ **Yeni kurs** ("Yeni Kurs Ekle", Add Course): ad, konu ve **kontenjan** ("Kontenjan": 0-1000 kişi ya da
+  sınırsız için "Sınırsız"; 0 kursu yeni öğrencilere kapatır); kurs her zaman giriş yapan öğretmene aittir.
+- ✅ **Kursu düzenleme** ("Kursu Düzenle", Edit Course): kendi kursunun adı, konusu ve kontenjanı; kontenjan kurstaki
+  öğrenci sayısının altına indirilemez.
+- ✅ **Kursu silme** ("Kursu Sil", Delete Course): kayıtlı öğrenci sayısını söyleyen bir onay ister ve kursta hâlâ o
+  kadar öğrenci varsa siler. Kurs silinmiş olarak işaretlenip notlarıyla saklanır (uygulama login'inin DELETE hakkı
+  yoktur), kayıtları kapanır ve tüm listelerden kalkar.
 - ✅ **Notlar** ("Not Ekle", Add Note): çok satırlı notlar, yalnızca öğretmenin kendi kurslarına.
 - ✅ **Kursun öğrencileri** ("Kayıtlı Öğrenciler", Enrolled Students), yalnızca öğretmenin kendi kurslarında.
-- ✅ **Kurtarma kodu** ("Kurtarma Kodu Üret", Issue Recovery Code): öğretmenin kendi kurslarındaki şifresiz bir
-  öğrenci için.
+- ✅ **Kurtarma kodu** ("Kurtarma Kodu Üret", Issue Recovery Code): öğretmenin kendi kurslarındaki, şifresi olmayan
+  veya şifresini unutan bir öğrenci için.
+
+### Yönetici paneli
+
+- ✅ **İlk yönetici** ilk kurulumdan ("İlk Kurulum") gelir; öğretmenleri zaten şifreyle giriş yapan bir veritabanı
+  yöneticisini veritabanı sahibinden `docs/promote-admin.sql` ile alır.
+- ✅ **Hesaplar** ("Kullanıcı Yönetimi", User Management): ada, e-posta adresine veya uzmanlığa göre arama, role göre
+  filtre, 20'şerlik sayfalar. Şifreler, özetler ve kodlar hiçbir zaman gösterilmez.
+- ✅ **Yeni öğretmen veya öğrenci** ("Yeni Hesap", New Account) şifresiz açılır: tek kullanımlık, 24 saat geçerli,
+  yalnızca bir kez gösterilen bir kod; kişi kendi şifresini bununla belirler ("Kodla şifre belirle"). Varsayılan şifre
+  yoktur.
+- ✅ **Devre dışı bırakma / etkinleştirme** ("Devre Dışı Bırak" / "Etkinleştir"): devre dışı hesap giriş yapamaz (yanlış
+  şifreyle aynı yanıt) ve açık oturumları kapanır.
+- ✅ **Yöneticiyi öğretmen yapma** ("Yöneticilikten Çıkar"); giriş yapabilen son yönetici ne devre dışı bırakılabilir
+  ne de yöneticilikten çıkarılabilir.
+- ✅ **Sıfırlama kodu** ("Sıfırlama Kodu Üret", Issue Reset Code): şifresini unutan her hesap için.
 
 ### Kurslar ve notlar
 
@@ -48,9 +76,13 @@ yapılır, veritabanı açılışta otomatik oluşturulur ve güncellenir.
   ve aynı denetim kodunu alır.
 - ✅ Hazır hesap yoktur: boş veritabanı ilk kurulumu ("İlk Kurulum", First-run Setup) açar; aksi halde kurucu,
   yalnızca veritabanı sahibinin üretebildiği bir **kurulum anahtarına** ihtiyaç duyar (24 saat, tek kullanım).
-- ✅ Eski uygulamanın şifresiz bıraktığı hesaplar için **kurtarma kodları** (24 saat, tek kullanım, özet olarak
-  saklanır).
-- ✅ Her servis çağrısı giriş yapan oturumun rolüne ve sahipliğine göre denetlenir.
+- ✅ Şifresiz hesaplar ve unutulan şifreler için **tek kullanımlık kodlar** (24 saat, tek kullanım, özet olarak
+  saklanır, bir kez gösterilir, günlüğe yazılmaz; hatalı kodlar giriş kilidine sayılır).
+- ✅ Her servis çağrısı giriş yapan oturumun rolüne ve sahipliğine göre, oturumun kendisi de veritabanına göre
+  denetlenir: devre dışı bırakılan, yöneticilikten çıkarılan veya şifresi sıfırlanan hesabın açık oturumu artık hiçbir
+  şey yapamaz.
+- ✅ Kurs kontenjanı kurs başına bir SQL Server uygulama kilidi altında belirlenir: son yeri iki öğrenci alamaz,
+  kontenjan öğrenci sayısının altına inemez, silme bir öğrenciyi silinmiş kursta bırakmaz.
 - ✅ Kişisel veri içermeyen, anonim denetim kodlu günlük dosyaları; yazma düğmeleri işlem sürerken tekrarlanan
   tıklamaları yok sayar.
 
@@ -70,20 +102,26 @@ Aşağıdaki görüntüler özgün uygulamanın ekranlarıdır; tasarım çalı�
 
 ## 🔑 Yetki Matrisi
 
-| İşlem | Öğrenci | Öğretmen |
-|---|---|---|
-| Hesap oluşturma | ✅ öğrenci hesabı, giriş ekranından | ❌ (ilk öğretmen kurulumdan gelir) |
-| Giriş | ✅ ad + şifre | ✅ ad + şifre |
-| Tüm kursları listeleme | ✅ | ❌ (kendi kurslarını görür) |
-| Kursa katılma | ✅ yalnızca kendisi için | ❌ |
-| Kurs detaylarını görme | ✅ tüm kurslar; notlar yalnızca katıldıklarında | ✅ yalnızca kendi kursları |
-| Kurs oluşturma | ❌ | ✅ kendisine ait |
-| Not ekleme | ❌ | ✅ kendi kurslarına |
-| Kursa kimlerin katıldığını görme | ❌ (yalnızca sayı) | ✅ kendi kurslarında |
-| Kurtarma kodu üretme | ❌ | ✅ kendi kurslarındaki şifresiz öğrenciler için |
-| Kodla ilk şifre belirleme | ✅ kendi hesabı | ❌ |
-| Kurulum anahtarıyla ilk şifre belirleme | ✅ yalnızca hiçbir derse kayıtlı değilken | ✅ şifreli öğretmen yokken |
-| Başka hesapların verisini görme veya değiştirme | ❌ | ❌ |
+| İşlem | Öğrenci | Öğretmen | Yönetici |
+|---|---|---|---|
+| Hesap oluşturma | ✅ öğrenci hesabı, giriş ekranından | ❌ | ❌ (panelde hesap açar) |
+| Giriş | ✅ ad + şifre | ✅ ad + şifre | ✅ ad + şifre (personel girişi) |
+| Kursları arama ve listeleme | ✅ filtre ve sayfalarla | ❌ (kendi kurslarını görür) | ❌ |
+| Kursa katılma / ayrılma | ✅ yalnızca kendisi için, kontenjan içinde | ❌ | ❌ |
+| Kurs detaylarını görme | ✅ tüm kurslar; notlar yalnızca katıldıklarında | ✅ yalnızca kendi kursları | ❌ |
+| Kurs oluşturma, düzenleme, silme; kontenjan | ❌ | ✅ yalnızca kendi kursları | ❌ |
+| Not ekleme | ❌ | ✅ kendi kurslarına | ❌ |
+| Kursa kimlerin katıldığını görme | ❌ (yalnızca sayı) | ✅ kendi kurslarında | ❌ |
+| Hesapları arama ve listeleme | ❌ | ❌ | ✅ (şifre ve kod hiçbir zaman) |
+| Öğretmen ve öğrenci hesabı açma | ❌ | ❌ | ✅ tek kullanımlık kodla, şifresiz |
+| Hesabı devre dışı bırakma / etkinleştirme | ❌ | ❌ | ✅ (son etkin yönetici hariç) |
+| Yöneticiyi öğretmen yapma | ❌ | ❌ | ✅ (son etkin yönetici hariç) |
+| Hesabı yönetici yapma | ❌ | ❌ | ❌ yalnızca veritabanı sahibi (`docs/promote-admin.sql`) |
+| Tek kullanımlık kod üretme | ❌ | ✅ kendi kurslarındaki öğrenciler için | ✅ her hesap için |
+| Kodla şifre belirleme | ✅ kendi hesabı | ✅ kendi hesabı | ✅ kendi hesabı |
+| Kurulum anahtarıyla ilk şifre belirleme | ✅ yalnızca hiçbir derse kayıtlı değilken | ✅ şifreli öğretmen veya yönetici yokken | ✅ aynı |
+| Kendi şifresini değiştirme | ✅ | ✅ | ✅ |
+| Başka hesapların verisini görme veya değiştirme | ❌ | ❌ | yalnızca yukarıdaki işlemlerle |
 
 ---
 
@@ -110,7 +148,7 @@ Aşağıdaki görüntüler özgün uygulamanın ekranlarıdır; tasarım çalı�
 OnlineEgitimPlatformu/
 ├── src/
 │   ├── OnlineEgitim.Domain/     # Varlıklar (Student, Teacher, Course, CourseNote, Enrollment, SetupKey) ve depo sözleşmeleri
-│   ├── OnlineEgitim.Business/   # Giriş, kurulum, kurtarma, kurs ve kayıt servisleri, Security/ (PBKDF2, kilit, kurulum anahtarı), Validation/ (FluentValidation), Auditing/
+│   ├── OnlineEgitim.Business/   # Giriş, kurulum, kurtarma, yönetim, kurs ve kayıt servisleri, oturum denetimi, Security/ (PBKDF2, kilit, kurulum anahtarı), Validation/ (FluentValidation), Auditing/
 │   ├── OnlineEgitim.Data/       # EF Core DbContext, yapılandırmalar, Migrations/, eski veritabanı yükseltmesi, demo verisi, depolar
 │   └── OnlineEgitim.UI/         # WinForms ekranları, Infrastructure/ (hatalar, günlük, iletişim kutuları, yazma koruması), Program.cs (bileşim kökü)
 ├── tests/
@@ -120,6 +158,7 @@ OnlineEgitimPlatformu/
 ├── assets/                      # SVG kaynaklarıyla özgün logo, arka plan ve simge
 ├── docs/
 │   ├── THREAT_MODEL.md          # Tehdit modeli (İngilizce)
+│   ├── promote-admin.sql        # Öğretmeni yönetici yapar, veritabanı sahibi çalıştırır
 │   ├── issue-setup-key.sql      # Kurulum anahtarı, veritabanı sahibi çalıştırır
 │   └── grant-app-login.sql      # Uygulamanın kendi login'inin hakları
 ├── screenshots/                 # Özgün uygulamanın ekranları
@@ -130,12 +169,12 @@ OnlineEgitimPlatformu/
 
 ```mermaid
 flowchart TD
-    UI["OnlineEgitim.UI<br/>WinForms, DI, hata yönetimi, Serilog"] --> BUS["OnlineEgitim.Business<br/>Giriş, kurulum, kurtarma, kurs ve kayıt servisleri,<br/>FluentValidation, PBKDF2, denetim olayları"]
+    UI["OnlineEgitim.UI<br/>WinForms, DI, hata yönetimi, Serilog"] --> BUS["OnlineEgitim.Business<br/>Giriş, kurulum, kurtarma, yönetim, kurs ve kayıt servisleri,<br/>oturum denetimi, FluentValidation, PBKDF2, denetim olayları"]
     UI --> DATA["OnlineEgitim.Data<br/>EF Core, depolar, migration'lar, eski veritabanı yükseltmesi"]
     BUS --> DOM["OnlineEgitim.Domain<br/>Varlıklar, depo sözleşmeleri"]
     DATA --> DOM
     DATA --> DB[("SQL Server<br/>OnlineEgitim")]
-    DBA(["Veritabanı sahibi"]) -.->|"issue-setup-key.sql<br/>grant-app-login.sql"| DB
+    DBA(["Veritabanı sahibi"]) -.->|"issue-setup-key.sql<br/>promote-admin.sql<br/>grant-app-login.sql"| DB
     UI -.-> LOG[["%LOCALAPPDATA%\OnlineEgitim\logs"]]
 ```
 
@@ -206,16 +245,28 @@ dotnet ef migrations add <Ad> --project src/OnlineEgitim.Data --output-dir Persi
 
 Tasarım zamanı fabrikası `EGITIM_CONNECTION` değişkenini okur, yoksa yerel SQL Server Express örneğini kullanır.
 
-### 3. İlk açılış, ilk öğretmen ve kurulum anahtarı
+### 3. İlk açılış, ilk yönetici ve kurulum anahtarı
 
-- Hazır hesap yoktur. Veritabanı **tamamen boşsa** uygulama **İlk Kurulum** ekranıyla açılır ve ilk öğretmen
-  anahtarsız oluşturulur.
-- Kurulum anahtarı yalnızca **şifreyle giriş yapabilen hiçbir öğretmen yokken** kabul edilir: öğrencileri olan ama
-  öğretmeni olmayan veritabanında ilk öğretmen (girişteki **İlk öğretmen kurulumu (kurulum anahtarı)** bağlantısı),
-  yalnızca şifresiz öğretmenleri olan veritabanında bir öğretmene ilk şifre (**Şifresiz hesabı kurtar** →
-  **Öğretmen (kurulum anahtarı)**) ve **yalnızca** hiçbir derse kayıtlı olmayan şifresiz bir öğrenciye ilk şifre (aynı
-  ekranda kod yerine anahtar). Derse kayıtlı öğrenci için anahtar reddedilir ve kullanılmamış kalır; kurtarma kodunu
-  o dersin öğretmeni üretir. Şifreli bir öğretmen varken anahtar kabul edilmez.
+- Hazır hesap yoktur. Veritabanı **tamamen boşsa** uygulama **İlk Kurulum** ekranıyla açılır ve **ilk yönetici**
+  anahtarsız oluşturulur. Öğretmen ve öğrenci hesaplarını sonra yönetici panelinden yönetici açar.
+- Kurulum anahtarı yalnızca **şifreyle giriş yapabilen hiçbir öğretmen veya yönetici yokken** kabul edilir:
+  hesapları olan ama yöneticisi olmayan veritabanında ilk yönetici (girişteki **İlk yönetici kurulumu (kurulum
+  anahtarı)** bağlantısı), şifresiz bir öğretmen veya yöneticiye ilk şifre (**Kodla şifre belirle** → **Öğretmen /
+  Yönetici**) ve **yalnızca** hiçbir derse kayıtlı olmayan şifresiz bir öğrenciye ilk şifre (aynı ekranda kod yerine
+  anahtar). Derse kayıtlı öğrenci için anahtar reddedilir ve kullanılmamış kalır; kurtarma kodunu o dersin öğretmeni
+  üretir. Şifreli bir öğretmen veya yönetici varken anahtar kabul edilmez.
+- **Öğretmenleri zaten şifreyle giriş yapan bir veritabanı** (örneğin yükseltilmiş özgün veritabanı) bu yüzden ilk
+  yöneticisini veritabanı sahibinden alır; sahip, kendi yetkisiyle mevcut bir öğretmeni yönetici yapar:
+
+  ```powershell
+  # önce betikteki @TeacherName değerini girin
+  sqlcmd -S <sunucu> -d <veritabanı> -E -i docs\promote-admin.sql
+  ```
+
+  Betik veritabanı sahibinden başkası için çalışmaz; `TR_Egitmenler_Rol` tetikleyicisi de bir hesabı yöneticiliğe
+  yükselten her değişikliği, sahip yapmadıkça reddeder. Uygulama login'i yönetici yapamaz. Yükseltilen öğretmenin
+  oturumları kapanır; yönetici ders vermez, o öğretmenin kursları katalogda kalır ama hesap yeniden öğretmen olana
+  kadar düzenlenemez.
 - Anahtarı **yalnızca veritabanı sahibi** (db_owner veya DBA) üretir:
 
   ```powershell
@@ -247,17 +298,25 @@ yalnızca `SELECT` ve `Tuketildi`/`TuketimTarihi` sütunlarında `UPDATE` hakkı
 - Bekleyen migration'lar bu haklardan fazlasını ister. Her şema güncellemesini önce sahibin bağlantısıyla uygulayın,
   sonra kısıtlı login'e dönün.
 
-### 5. Şifresiz hesapların kurtarılması
+### 5. Şifreler: henüz yok, unutuldu veya değişiyor
 
-Eski uygulamanın şifresiz bıraktığı hesaplar boş veya herhangi bir şifreyle giriş yapamaz. İlk şifreleri, hesap
-kimliği ve ders kayıtları korunarak şöyle belirlenir:
+Şifresiz hesaplar (özgün uygulamanın böyle bıraktığı veya yöneticinin açtığı) boş ya da herhangi bir şifreyle giriş
+yapamaz. Şifre, hesap kimliği ve ders kayıtları korunarak **tek kullanımlık bir kodla** belirlenir; aynı kod şifresini
+**unutan** biri için de yeni şifre belirler:
 
-- **Öğrenci:** Öğretmen panelindeki **Kurtarma Kodu Üret**, yalnızca o öğretmenin kendi derslerinden birine kayıtlı
-  öğrenci için tek kullanımlık, 24 saat geçerli bir kod üretir (veritabanında yalnızca özeti tutulur). Başka
-  öğretmenin öğrencisi veya derssiz öğrenci için istek, öğrenci yokmuş gibi reddedilir. Öğrenci giriş ekranındaki
-  **Şifresiz hesabı kurtar** bağlantısında adını, kodu ve yeni şifresini girer. Hatalı kodlar giriş kilidine sayılır.
-- **Hiçbir derse kayıtlı olmayan öğrenci:** şifreli öğretmen yokken kod alanına kurulum anahtarı.
-- **Öğretmen:** aynı ekranda **Öğretmen (kurulum anahtarı)** seçilir; kurulum anahtarıyla bir kez şifre belirlenir.
+- **Kodu kim üretir:** yönetici her hesap için (**Sıfırlama Kodu Üret** ya da hesap açılırken gösterilen kod);
+  öğretmen (**Kurtarma Kodu Üret**) yalnızca kendi derslerinden birine kayıtlı öğrenci için. Başka öğretmenin
+  öğrencisi, derssiz öğrenci veya bilinmeyen ad için öğretmen, aynı maliyetle, öğrenci yokmuş gibi yanıt alır ve
+  hiçbir şey değişmez.
+- **Kod:** 10 karakter, 24 saat geçerli, yalnızca PBKDF2 özeti saklanır, bir kez gösterilir, günlüğe yazılmaz. Eski
+  şifre kod kullanılana kadar çalışmaya devam eder.
+- **Kullanım:** giriş ekranında **Kodla şifre belirle**, öğrenci ya da öğretmen / yönetici olarak: ad, kod ve iki kez
+  yeni şifre. Hatalı kodlar giriş kilidine sayılır; kullanılmış, değiştirilmiş veya süresi dolmuş kod, bilinmeyen ad,
+  kilitli veya devre dışı hesap aynı mesajı alır. Hesabın önceki tüm oturumları kapanır.
+- **Kendi şifresini değiştirme:** her paneldeki **Şifremi Değiştir**, mevcut şifreyle; yanlış mevcut şifre giriş
+  kilidine sayılır. Başarılı olunca hesabın tüm oturumları kapanır ve uygulama girişe döner.
+- **Hiçbir derse kayıtlı olmayan öğrenci:** şifreli öğretmen veya yönetici yokken kod alanına kurulum anahtarı;
+  **şifresiz öğretmen veya yönetici:** aynı koşulda kurulum anahtarı.
 
 ### 6. Özgün veritabanının yükseltilmesi
 
@@ -308,7 +367,13 @@ Tehdit modeli için [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) dosyasına bak�
   denemeler yeni bir kilidi silemez.
 - Rol ve sahiplik servislerde denetlenir ve veritabanı yazımlarında tekrarlanır; olmayan kurs ile başkasının kursu
   aynı yanıtı alır.
-- Kurulum anahtarları yalnızca veritabanı sahibinden, kurtarma kodları yalnızca öğrencinin kendi öğretmeninden gelir.
+- Her servis çağrısı oturumu veritabanına göre denetler (rol, devre dışı bilgisi, oturum sürümü); yöneticilikten
+  çıkarılan, devre dışı bırakılan veya şifresi sıfırlanan hesabın açık oturumu hiçbir şey yapamaz ve tek bir "oturum
+  sona erdi" mesajı alır.
+- Kurulum anahtarları ve yöneticiliğe yükseltme yalnızca veritabanı sahibinden; tek kullanımlık kodlar yalnızca
+  yöneticiden veya öğrencinin kendi öğretmeninden gelir.
+- Kontenjan kurs başına bir `sp_getapplock` kilidi altında, etkin yönetici sayısını azaltabilen değişiklikler tek bir
+  yönetici kilidi altında sayılır.
 - Bağlantı cümleleri depo dışında tutulur (`appsettings.json` yok sayılır; user secrets ve ortam değişkenleri
   desteklenir). Tüm sorgular EF Core üzerinden parametreli çalışır.
 - Kullanıcılar yalnızca Türkçe mesajlar görür; ham istisna metni hiçbir zaman gösterilmez.
@@ -319,12 +384,21 @@ Tehdit modeli için [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) dosyasına bak�
 
 ### Elle test
 
-1. Boş bir veritabanında **İlk Kurulum** ile ilk öğretmeni oluşturun; ikinci kurulum reddedilir.
-2. Geçersiz bir e-posta adresi veya 7 karakterlik şifreyle öğrenci kaydı deneyin; sonra doğru kayıt olup giriş yapın.
-3. Beş kez yanlış şifre girin: altıncı deneme doğru şifreyle bile aynı mesajla reddedilir, 15 dakika sonra yeniden
+1. Boş bir veritabanında **İlk Kurulum** ile ilk yöneticiyi oluşturun; ikinci kurulum reddedilir.
+2. Yönetici olarak bir öğretmen açın; kodu not edin, **Kodla şifre belirle** ile öğretmenin şifresini belirleyip
+   öğretmen olarak giriş yapın. Kodu yeniden kullanmak reddedilir.
+3. Geçersiz bir e-posta adresi veya 7 karakterlik şifreyle öğrenci kaydı deneyin; sonra doğru kayıt olup giriş yapın.
+4. Beş kez yanlış şifre girin: altıncı deneme doğru şifreyle bile aynı mesajla reddedilir, 15 dakika sonra yeniden
    çalışır.
-4. Öğretmen olarak bir kurs oluşturup not ekleyin; öğrenci olarak kursa katılıp notu okuyun.
-5. SQL Server'ı durdurun; anlaşılır bir Türkçe hata gösterildiğini ve günlük dosyasının yalnızca tür ve yöntem adları
+5. Öğretmen olarak kontenjanı 1 olan bir kurs açıp not ekleyin; öğrenci olarak katılıp notu okuyun; ikinci öğrenciye
+   kursun dolu olduğu söylenir. İlk öğrenci kurstan ayrılsın: not gizlenir, ikinci öğrenci katılabilir, ilk öğrenci
+   aynı gün yeniden katılamaz.
+6. Öğretmen olarak kontenjanı öğrenci sayısının altına indirmeyi deneyin (reddedilir), sonra kursu silin: onay
+   öğrenci sayısını söyler ve kurs herkes için kaybolur.
+7. Yönetici olarak, öğrenci giriş yapmışken öğrenciyi devre dışı bırakın: öğrencinin bir sonraki işlemi oturumu
+   kapatır ve giriş reddedilir. Tek yöneticiyi devre dışı bırakmayı deneyin: reddedilir.
+8. **Şifremi Değiştir** ile şifre değiştirin: panel girişe döner ve eski şifre artık çalışmaz.
+9. SQL Server'ı durdurun; anlaşılır bir Türkçe hata gösterildiğini ve günlük dosyasının yalnızca tür ve yöntem adları
    içerdiğini kontrol edin.
 
 ### Otomatik testler
@@ -335,9 +409,9 @@ dotnet test -c Release
 
 | Proje | Tür | Kapsam | Sonuç (`-c Release`) |
 |---|---|---|---|
-| `tests/OnlineEgitim.Business.Tests` | Birim | Doğrulayıcı sınırları ve mesaj sırası, PBKDF2 ve biçim yükseltmesi, kilit, tek tip retler ve denetim kodları, kurs, not ve kayıtlarda rol ve sahiplik, katı Moq taklitleriyle kurulum anahtarı ve kurtarma | 193 başarılı |
-| `tests/OnlineEgitim.Data.Tests` | Entegrasyon | SQLite bellek içi veritabanında servisler ve depolar (kilit, özet yükseltmesi, sahiplik, kurtarma, reddedilen girdi); SQL Server'da ders kaydı, giriş, kurulum ve kurulum anahtarı yarışları, beklerken süresi dolan anahtar, uygulama login'inin hakları, eski veritabanı yükseltmesi ve kilidi | SQL Server ve `EGITIM_LEGACY_BACKUP` ile 61 başarılı (yedek olmadan 60 başarılı, 1 atlandı); SQL Server olmadan 42 başarılı, 19 atlandı |
-| `tests/OnlineEgitim.UI.Tests` | Birim | Örnek yapılandırma, hata mesajları, günlük içeriği, saklama süresi ve dosyalar, iletişim kutusu yardımcısı, kilit açıldıktan sonra odak, yazma korumaları, en son yanıtın gösterilmesi, nötr marka | 58 başarılı |
+| `tests/OnlineEgitim.Business.Tests` | Birim | Doğrulayıcı sınırları ve mesaj sırası, PBKDF2 ve biçim yükseltmesi, kilit, tek tip retler ve denetim kodları, kurs, not ve kayıtlarda rol ve sahiplik, kontenjan, ayrılma ve arama, yönetim, oturum denetimi, şifre değiştirme ve sıfırlama kodları, katı Moq taklitleriyle kurulum anahtarı ve kurtarma | 259 başarılı |
+| `tests/OnlineEgitim.Data.Tests` | Entegrasyon | SQLite bellek içi veritabanında servisler ve depolar (kilit, özet yükseltmesi, sahiplik, kurtarma, reddedilen girdi); SQL Server'da ders kaydı, giriş, kurulum ve kurulum anahtarı yarışları, beklerken süresi dolan anahtar, uygulama login'inin hakları, eski veritabanı yükseltmesi ve kilidi ; kontenjan, silme, ayrılma, arama, yönetim ve şifre sıfırlama; SQL Server'da son yer, kontenjan, silme, yönetici, kod ve giriş yarışları ve yalnızca sahibin yönetici yapabilmesi | SQL Server ve `EGITIM_LEGACY_BACKUP` ile 105 başarılı (yedek olmadan 104 başarılı, 1 atlandı); SQL Server olmadan 75 başarılı, 30 atlandı |
+| `tests/OnlineEgitim.UI.Tests` | Birim | Örnek yapılandırma, hata mesajları, günlük içeriği, saklama süresi ve dosyalar, iletişim kutusu yardımcısı, kilit açıldıktan sonra odak, yazma korumaları, en son yanıtın ve aramanın gösterilmesi, kurs, hesap ve şifre pencereleri, sona eren oturumlar, nötr marka | 75 başarılı |
 
 SQL Server testleri `EGITIM_TEST_SQLSERVER` içindeki sunucuda (varsayılan: Windows kimlik doğrulamalı yerel SQL Express)
 geçici veritabanları kullanır; `EGITIM_SKIP_SQL_TESTS=1` ayarlıysa veya sunucuya ulaşılamıyorsa atlanır. Geçici

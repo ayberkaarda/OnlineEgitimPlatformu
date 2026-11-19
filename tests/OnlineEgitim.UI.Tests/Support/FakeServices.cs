@@ -42,6 +42,18 @@ internal sealed class PendingAuthService : IAuthService
         return _register.Task;
     }
 
+    public int ChangeCalls { get; private set; }
+
+    public TaskCompletionSource Change { get; private set; } = new();
+
+    public Task ChangePasswordAsync(UserSession session, string? currentPassword, string? newPassword, string? newPasswordRepeat, CancellationToken cancellationToken = default)
+    {
+        ChangeCalls++;
+        LastPassword = currentPassword;
+        Change = new TaskCompletionSource();
+        return Change.Task;
+    }
+
     /// <summary>Refuses the pending sign-in as wrong credentials would.</summary>
     public void RefuseSignIn() => _signIn.SetException(new BusinessRuleException("Giriş başarısız."));
 
@@ -71,6 +83,30 @@ internal sealed class ControlledCourseService : ICourseService
     public Task<IReadOnlyList<CourseSummary>> GetCatalogAsync(UserSession session, CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<CourseSummary>>(Courses);
 
+    /// <summary>When set, searches stay pending in <see cref="Searches"/> until the test answers them.</summary>
+    public bool HoldSearches { get; set; }
+
+    public List<(CourseSearch Search, TaskCompletionSource<CatalogResult> Answer)> Searches { get; } = [];
+
+    public Task<CatalogResult> SearchCatalogAsync(UserSession session, CourseSearch search, CancellationToken cancellationToken = default)
+    {
+        var answer = new TaskCompletionSource<CatalogResult>();
+        Searches.Add((search, answer));
+        if (!HoldSearches)
+        {
+            answer.SetResult(Page(Courses, search.PageIndex));
+        }
+
+        return answer.Task;
+    }
+
+    /// <summary>A result with <paramref name="courses"/> on page <paramref name="pageIndex"/> of 20 each.</summary>
+    public static CatalogResult Page(IEnumerable<CourseSummary> courses, int pageIndex = 0, int total = -1)
+    {
+        var items = courses.Select(c => new CatalogEntry(c, false)).ToList();
+        return new CatalogResult(items, total < 0 ? items.Count : total, pageIndex, CourseSearch.DefaultPageSize);
+    }
+
     public Task<IReadOnlyList<CourseSummary>> GetTeachingAsync(UserSession session, CancellationToken cancellationToken = default)
     {
         TeachingCalls++;
@@ -85,12 +121,35 @@ internal sealed class ControlledCourseService : ICourseService
             ? Task.FromResult(details)
             : Task.FromException<CourseDetails>(new BusinessRuleException("Ders bulunamadı."));
 
-    public Task<int> CreateAsync(UserSession session, string? name, string? topic, CancellationToken cancellationToken = default)
+    public int? LastCapacity { get; private set; }
+
+    public List<string> Writes { get; } = [];
+
+    public Task<int> CreateAsync(UserSession session, string? name, string? topic, int? capacity, CancellationToken cancellationToken = default)
     {
         CreateCalls++;
+        LastCapacity = capacity;
         _create = new TaskCompletionSource<int>();
         return _create.Task;
     }
+
+    public Task UpdateAsync(UserSession session, int courseId, string? name, string? topic, int? capacity, CancellationToken cancellationToken = default)
+    {
+        Writes.Add(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"update:{courseId}:{name}:{capacity?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "-"}"));
+        _write = new TaskCompletionSource();
+        return _write.Task;
+    }
+
+    public Task DeleteAsync(UserSession session, int courseId, int confirmedStudents, CancellationToken cancellationToken = default)
+    {
+        Writes.Add(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"delete:{courseId}:{confirmedStudents}"));
+        _write = new TaskCompletionSource();
+        return _write.Task;
+    }
+
+    public void CompleteWrite() => _write.SetResult();
+
+    private TaskCompletionSource _write = new();
 
     public Task AddNoteAsync(UserSession session, int courseId, string? content, CancellationToken cancellationToken = default)
     {
@@ -119,6 +178,17 @@ internal sealed class ControlledEnrollmentService : IEnrollmentService
         return new TaskCompletionSource().Task;
     }
 
+    public List<int> LeaveCalls { get; } = [];
+
+    public TaskCompletionSource Leave { get; private set; } = new();
+
+    public Task LeaveAsync(UserSession session, int courseId, CancellationToken cancellationToken = default)
+    {
+        LeaveCalls.Add(courseId);
+        Leave = new TaskCompletionSource();
+        return Leave.Task;
+    }
+
     public Task<IReadOnlyList<CourseSummary>> GetMyCoursesAsync(UserSession session, CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<CourseSummary>>(Mine);
 
@@ -144,11 +214,11 @@ internal sealed class PendingSetupService : ISetupService
 
     public Task<bool> IsSetupRequiredAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
 
-    public Task<SetupStage> GetStageAsync(CancellationToken cancellationToken = default) => Task.FromResult(SetupStage.FirstTeacherNeedsKey);
+    public Task<SetupStage> GetStageAsync(CancellationToken cancellationToken = default) => Task.FromResult(SetupStage.FirstAdminNeedsKey);
 
     public SetupKeyPrefill GetEnvironmentKey() => EnvironmentKey;
 
-    public Task<UserSession> CreateFirstTeacherAsync(
+    public Task<UserSession> CreateFirstAdminAsync(
         string? setupKey,
         string? fullName,
         string? specialty,

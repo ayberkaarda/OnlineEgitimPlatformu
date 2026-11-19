@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Time.Testing;
 using Moq;
 using OnlineEgitim.Business.Auditing;
 using OnlineEgitim.Business.Security;
@@ -14,16 +15,17 @@ public sealed class EnrollmentServiceTests
     private readonly Mock<IEnrollmentRepository> _enrollments = new(MockBehavior.Strict);
     private readonly Mock<ICourseRepository> _courses = new(MockBehavior.Strict);
     private readonly RecordingAudit _audit = new();
+    private readonly FakeTimeProvider _clock = new(new DateTimeOffset(2026, 3, 2, 10, 0, 0, TimeSpan.Zero));
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private EnrollmentService Service => new(_enrollments.Object, _courses.Object, _audit);
+    private EnrollmentService Service => new(_enrollments.Object, _courses.Object, _clock, _audit, CurrentSessions.Instance);
 
     [Fact]
     public async Task Enroll_Twice_GetsTheOriginalMessage()
     {
         _courses.Setup(c => c.GetByIdAsync(3, It.IsAny<CancellationToken>())).ReturnsAsync(DenizCourse);
-        _enrollments.Setup(e => e.AddAsync(5, 3, It.IsAny<CancellationToken>())).ThrowsAsync(new AlreadyEnrolledException());
+        _enrollments.Setup(e => e.AddAsync(5, 3, It.IsAny<DateTime>(), It.IsAny<CancellationToken>())).ReturnsAsync(EnrollmentStatus.AlreadyEnrolled);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service.EnrollAsync(Sessions.Student(5), 3, Ct));
 
@@ -35,7 +37,7 @@ public sealed class EnrollmentServiceTests
     public async Task Enroll_UsesTheSessionsStudent()
     {
         _courses.Setup(c => c.GetByIdAsync(3, It.IsAny<CancellationToken>())).ReturnsAsync(DenizCourse);
-        _enrollments.Setup(e => e.AddAsync(5, 3, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        _enrollments.Setup(e => e.AddAsync(5, 3, It.IsAny<DateTime>(), It.IsAny<CancellationToken>())).ReturnsAsync(EnrollmentStatus.Enrolled);
 
         await Service.EnrollAsync(Sessions.Student(5), 3, Ct);
 
@@ -45,14 +47,26 @@ public sealed class EnrollmentServiceTests
     [Fact]
     public async Task Enroll_NoSelectionOrMissingCourse_IsRefusedWithoutAWrite()
     {
-        _courses.Setup(c => c.GetByIdAsync(99, It.IsAny<CancellationToken>())).ReturnsAsync((CourseSummary?)null);
+        _enrollments.Setup(e => e.AddAsync(1, 99, It.IsAny<DateTime>(), It.IsAny<CancellationToken>())).ReturnsAsync(EnrollmentStatus.CourseNotFound);
 
         var none = await Assert.ThrowsAsync<BusinessRuleException>(() => Service.EnrollAsync(Sessions.Student(), 0, Ct));
         var missing = await Assert.ThrowsAsync<BusinessRuleException>(() => Service.EnrollAsync(Sessions.Student(), 99, Ct));
 
         Assert.Equal(EnrollmentService.CourseRequired, none.Message);
         Assert.Equal(Access.CourseNotFound, missing.Message);
-        _enrollments.VerifyNoOtherCalls();
+        Assert.Equal([(AuditEvent.AccessDenied, (AccountRole?)AccountRole.Student)], _audit.Events);
+        _enrollments.Verify(e => e.AddAsync(It.IsAny<int>(), 0, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Enroll_FullCourse_IsRefusedWithItsOwnMessageAndNoAudit()
+    {
+        _enrollments.Setup(e => e.AddAsync(5, 3, It.IsAny<DateTime>(), It.IsAny<CancellationToken>())).ReturnsAsync(EnrollmentStatus.CourseFull);
+
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service.EnrollAsync(Sessions.Student(5), 3, Ct));
+
+        Assert.Equal(EnrollmentService.CourseFull, error.Message);
+        Assert.Empty(_audit.Events);
     }
 
     [Fact]
@@ -101,13 +115,13 @@ public sealed class SetupServiceTests
 
     /// <summary>The repository checks the key against the stored one inside its transaction, as the real one does.</summary>
     private void RepositoryCreates(int id, Action<Teacher>? stored = null) =>
-        _accounts.Setup(a => a.AddFirstTeacherAsync(It.IsAny<Teacher>(), It.IsAny<SetupKeyAttempt?>(), It.IsAny<CancellationToken>()))
+        _accounts.Setup(a => a.AddFirstAdminAsync(It.IsAny<Teacher>(), It.IsAny<SetupKeyAttempt?>(), It.IsAny<CancellationToken>()))
             .Returns<Teacher, SetupKeyAttempt?, CancellationToken>((t, attempt, _) =>
             {
                 stored?.Invoke(t);
                 return Task.FromResult(attempt?.FindMatch([Stored]) == Stored.Id
-                    ? new FirstTeacherResult(FirstTeacherStatus.Created, id)
-                    : new FirstTeacherResult(FirstTeacherStatus.NotAuthorized, 0));
+                    ? new FirstAdminResult(FirstAdminStatus.Created, id)
+                    : new FirstAdminResult(FirstAdminStatus.NotAuthorized, 0));
             });
 
     [Fact]
@@ -116,14 +130,15 @@ public sealed class SetupServiceTests
         Teacher? stored = null;
         RepositoryCreates(1, t => stored = t);
 
-        var session = await Service.CreateFirstTeacherAsync(Key, " Ada Kurucu ", " Matematik ", "Gizli.Sifre1", "Gizli.Sifre1", Ct);
+        var session = await Service.CreateFirstAdminAsync(Key, " Ada Kurucu ", " Matematik ", "Gizli.Sifre1", "Gizli.Sifre1", Ct);
 
-        Assert.True(session.IsTeacher);
+        Assert.True(session.IsAdmin);
         Assert.NotNull(stored);
         Assert.Equal("Ada Kurucu", stored.FullName);
         Assert.Equal("Matematik", stored.Specialty);
         Assert.Equal(PasswordVerificationResult.Success, _hasher.Verify("Gizli.Sifre1", stored.PasswordHash, PasswordFormat.Pbkdf2));
-        Assert.Equal([(AuditEvent.FirstTeacherCreated, (AccountRole?)AccountRole.Teacher)], _audit.Events);
+        Assert.Equal(AccountRole.Admin, stored.Role);
+        Assert.Equal([(AuditEvent.FirstAdminCreated, (AccountRole?)AccountRole.Admin)], _audit.Events);
     }
 
     [Fact]
@@ -134,7 +149,7 @@ public sealed class SetupServiceTests
         foreach (var wrong in new[] { "YANLIS", Key[..^1] + "0", Key + "0", new string('-', 39) })
         {
             var error = await Assert.ThrowsAsync<BusinessRuleException>(
-                () => Service.CreateFirstTeacherAsync(wrong, "Ada Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
+                () => Service.CreateFirstAdminAsync(wrong, "Ada Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
             Assert.Equal(SetupService.SetupKeyInvalid, error.Message);
         }
 
@@ -144,11 +159,11 @@ public sealed class SetupServiceTests
     [Fact]
     public async Task Create_TeacherAlreadyExists_IsRefused()
     {
-        _accounts.Setup(a => a.AddFirstTeacherAsync(It.IsAny<Teacher>(), It.IsAny<SetupKeyAttempt?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new FirstTeacherResult(FirstTeacherStatus.TeacherExists, 0));
+        _accounts.Setup(a => a.AddFirstAdminAsync(It.IsAny<Teacher>(), It.IsAny<SetupKeyAttempt?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FirstAdminResult(FirstAdminStatus.AdminExists, 0));
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(
-            () => Service.CreateFirstTeacherAsync(Key, "Ada Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
+            () => Service.CreateFirstAdminAsync(Key, "Ada Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
 
         Assert.Equal(SetupService.AlreadyDone, error.Message);
         Assert.Empty(_audit.Events);
@@ -162,7 +177,7 @@ public sealed class SetupServiceTests
     [InlineData(Key, "Ada<script>", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1")]
     public async Task Create_InvalidInput_IsRefusedBeforeAnyWrite(string? key, string? name, string? specialty, string password, string repeat)
     {
-        await Assert.ThrowsAsync<BusinessRuleException>(() => Service.CreateFirstTeacherAsync(key, name, specialty, password, repeat, Ct));
+        await Assert.ThrowsAsync<BusinessRuleException>(() => Service.CreateFirstAdminAsync(key, name, specialty, password, repeat, Ct));
 
         _accounts.VerifyNoOtherCalls();
     }

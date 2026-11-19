@@ -25,7 +25,10 @@ public enum AuditEvent
     /// <summary>A new student account was created.</summary>
     StudentRegistered = 4,
 
-    /// <summary>The first teacher account was created by the first-run setup.</summary>
+    /// <summary>
+    /// The first teacher account was created by the first-run setup. No longer recorded: the setup
+    /// creates the first administrator (<see cref="FirstAdminCreated"/>); kept so the value keeps its meaning.
+    /// </summary>
     FirstTeacherCreated = 5,
 
     /// <summary>A teacher created a course.</summary>
@@ -46,10 +49,10 @@ public enum AuditEvent
     /// <summary>A founder operation was refused: the setup key was missing, wrong, expired or used.</summary>
     SetupRefused = 10,
 
-    /// <summary>A teacher issued a recovery code for a student account without a password.</summary>
+    /// <summary>A teacher (for a student of their course) or an administrator (for any account) issued a single use code.</summary>
     RecoveryCodeIssued = 11,
 
-    /// <summary>An account without a password got its first password through a verified recovery.</summary>
+    /// <summary>An account set its password with a single use code or the setup key; its sessions ended.</summary>
     AccountRecovered = 12,
 
     /// <summary>A recovery was refused (wrong, used or expired code or key, or no such account).</summary>
@@ -57,6 +60,39 @@ public enum AuditEvent
 
     /// <summary>A registration used a name or e-mail address that is taken; no account was created.</summary>
     RegistrationNotCompleted = 14,
+
+    /// <summary>A teacher changed the name, topic or capacity of a course.</summary>
+    CourseUpdated = 15,
+
+    /// <summary>A teacher deleted a course; its active enrollments were closed.</summary>
+    CourseDeleted = 16,
+
+    /// <summary>A student left a course.</summary>
+    EnrollmentLeft = 17,
+
+    /// <summary>An administrator created a teacher or student account (the role is the new account's).</summary>
+    AccountCreated = 18,
+
+    /// <summary>An administrator disabled an account (the role is the disabled account's).</summary>
+    AccountDisabled = 19,
+
+    /// <summary>An administrator enabled an account again (the role is the enabled account's).</summary>
+    AccountEnabled = 20,
+
+    /// <summary>An administrator made another administrator, or themselves, a teacher.</summary>
+    AdminDemoted = 21,
+
+    /// <summary>A session was refused: the account was disabled, its password reset or its role changed since.</summary>
+    SessionRejected = 22,
+
+    /// <summary>The first administrator account was created by the first-run setup.</summary>
+    FirstAdminCreated = 23,
+
+    /// <summary>A signed-in account changed its own password; its sessions ended.</summary>
+    PasswordChanged = 24,
+
+    /// <summary>A password change was refused: the current password was wrong, or the account locked or changed.</summary>
+    PasswordChangeFailed = 25,
 }
 
 /// <summary>Receives <see cref="AuditEvent"/>s.</summary>
@@ -84,14 +120,41 @@ public static class AuditCodes
         AuditEvent.AccountRecovered => "recovery.completed",
         AuditEvent.RecoveryFailed => "recovery.failed",
         AuditEvent.RegistrationNotCompleted => "auth.student.registration_not_completed",
+        AuditEvent.CourseUpdated => "course.updated",
+        AuditEvent.CourseDeleted => "course.deleted",
+        AuditEvent.EnrollmentLeft => "course.left",
+        AuditEvent.AccountCreated => "admin.account.created",
+        AuditEvent.AccountDisabled => "admin.account.disabled",
+        AuditEvent.AccountEnabled => "admin.account.enabled",
+        AuditEvent.AdminDemoted => "admin.role.demoted",
+        AuditEvent.SessionRejected => "auth.session.rejected",
+        AuditEvent.FirstAdminCreated => "setup.admin.created",
+        AuditEvent.PasswordChanged => "auth.password.changed",
+        AuditEvent.PasswordChangeFailed => "auth.password.change_failed",
         _ => throw new ArgumentOutOfRangeException(nameof(auditEvent), auditEvent, "Unknown audit event."),
     };
+
+    /// <summary>
+    /// The code written to a log that the local Windows user can read. It is <see cref="Of(AuditEvent)"/>
+    /// except for the two outcomes of a registration: a new account and a taken name or e-mail address
+    /// share one neutral code, because whoever made the attempt knows its time and could otherwise tell
+    /// from the file whether someone else's name or address is registered.
+    /// </summary>
+    public static string ForPublicLog(AuditEvent auditEvent) => auditEvent switch
+    {
+        AuditEvent.StudentRegistered or AuditEvent.RegistrationNotCompleted => RegistrationSubmitted,
+        _ => Of(auditEvent),
+    };
+
+    /// <summary>The neutral code of <see cref="ForPublicLog"/> for both registration outcomes.</summary>
+    public const string RegistrationSubmitted = "auth.student.registration_submitted";
 
     /// <summary>Lower case role name as it is written to the log.</summary>
     public static string Of(AccountRole? role) => role switch
     {
         AccountRole.Student => "student",
         AccountRole.Teacher => "teacher",
+        AccountRole.Admin => "admin",
         null => "none",
         _ => "unknown",
     };

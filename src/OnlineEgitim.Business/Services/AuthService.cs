@@ -14,8 +14,11 @@ public interface IAuthService
     /// <exception cref="BusinessRuleException">Wrong credentials, missing input or a locked account.</exception>
     Task<UserSession> SignInStudentAsync(string? fullName, string? password, CancellationToken cancellationToken = default);
 
-    /// <summary>Signs a teacher in with the name and password, as the original teacher sign-in did.</summary>
-    /// <exception cref="BusinessRuleException">Wrong credentials, missing input or a locked account.</exception>
+    /// <summary>
+    /// Signs a teacher or an administrator in with the name and password (the staff sign-in, as the
+    /// original teacher sign-in did); the session has the account's own role.
+    /// </summary>
+    /// <exception cref="BusinessRuleException">Wrong credentials, missing input, a locked or a disabled account.</exception>
     Task<UserSession> SignInTeacherAsync(string? fullName, string? password, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -25,6 +28,13 @@ public interface IAuthService
     /// input is refused.
     /// </summary>
     Task RegisterStudentAsync(string? fullName, string? email, string? password, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Changes the signed-in account's own password after checking its current one. A wrong current
+    /// password counts towards the sign-in lockout like a wrong sign-in; every refusal has one message.
+    /// On success every session of the account ends, this one too: the user signs in again.
+    /// </summary>
+    Task ChangePasswordAsync(UserSession session, string? currentPassword, string? newPassword, string? newPasswordRepeat, CancellationToken cancellationToken = default);
 }
 
 internal sealed class AuthService(
@@ -33,10 +43,16 @@ internal sealed class AuthService(
     TimeProvider timeProvider,
     IAuditLog audit,
     IValidator<RegistrationInput> registrationValidator,
-    IValidator<SignInInput> signInValidator) : IAuthService
+    IValidator<SignInInput> signInValidator,
+    ISessionGuard sessions,
+    IValidator<ChangePasswordInput> changePasswordValidator) : IAuthService
 {
-    // Every refused sign-in (unknown name, wrong password, no password, locked account, a lost race)
-    // gets this one answer and one audit event; the lockout rule itself is stated for everyone.
+    internal static readonly string PasswordChangeFailed = string.Create(
+        CultureInfo.InvariantCulture,
+        $"Şifre değiştirilemedi. Mevcut şifre hatalı. {LoginPolicy.MaxFailedAttempts} hatalı denemeden sonra giriş {LoginPolicy.LockoutDuration.TotalMinutes:0} dakika engellenir.");
+
+    // Every refused sign-in (unknown name, wrong password, no password, locked or disabled account, a
+    // lost race) gets this one answer and one audit event; the lockout rule itself is stated for everyone.
     internal static readonly string CredentialsInvalid = string.Create(
         CultureInfo.InvariantCulture,
         $"Giriş başarısız. Ad veya şifre hatalı. {LoginPolicy.MaxFailedAttempts} hatalı denemeden sonra giriş {LoginPolicy.LockoutDuration.TotalMinutes:0} dakika engellenir.");
@@ -87,6 +103,53 @@ internal sealed class AuthService(
         audit.Record(AuditEvent.StudentRegistered, AccountRole.Student);
     }
 
+    public async Task ChangePasswordAsync(
+        UserSession session,
+        string? currentPassword,
+        string? newPassword,
+        string? newPasswordRepeat,
+        CancellationToken cancellationToken = default)
+    {
+        Access.RequireSignedIn(session);
+        await sessions.EnsureCurrentAsync(session, cancellationToken).ConfigureAwait(false);
+        var input = new ChangePasswordInput(currentPassword, newPassword, newPasswordRepeat);
+        changePasswordValidator.ValidateOrThrow(input);
+
+        // Derived first, so every path below costs the same: one verification and one new hash.
+        var newHash = passwordHasher.Hash(input.NewPassword!);
+        var account = await accounts.FindByIdAsync(session.Role, session.UserId, cancellationToken).ConfigureAwait(false);
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        if (account is null || account.LockoutEnd > now || account.Disabled)
+        {
+            passwordHasher.SimulateVerification(input.CurrentPassword!);
+            throw ChangeRefused(session.Role);
+        }
+
+        if (passwordHasher.Verify(input.CurrentPassword!, account.PasswordHash, account.PasswordFormat) == PasswordVerificationResult.Failed)
+        {
+            await accounts.RecordFailedLoginAsync(
+                session.Role,
+                account.Id,
+                LoginPolicy.MaxFailedAttempts,
+                now + LoginPolicy.LockoutDuration,
+                cancellationToken).ConfigureAwait(false);
+            throw ChangeRefused(session.Role);
+        }
+
+        if (!await accounts.ChangePasswordAsync(session.Role, account, now, newHash, cancellationToken).ConfigureAwait(false))
+        {
+            throw ChangeRefused(session.Role);
+        }
+
+        audit.Record(AuditEvent.PasswordChanged, session.Role);
+    }
+
+    private BusinessRuleException ChangeRefused(AccountRole role)
+    {
+        audit.Record(AuditEvent.PasswordChangeFailed, role);
+        return new BusinessRuleException(PasswordChangeFailed);
+    }
+
     private async Task<UserSession> SignInAsync(
         AccountRole role,
         string? fullName,
@@ -106,10 +169,10 @@ internal sealed class AuthService(
         }
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
-        if (account.LockoutEnd > now)
+        if (account.LockoutEnd > now || account.Disabled)
         {
             // Same answer and about the same cost as a wrong password; nothing is written, so the
-            // lock neither grows nor ends early.
+            // lock neither grows nor ends early, and a disabled account is not locked by guessing.
             passwordHasher.SimulateVerification(password);
             throw Refused(role);
         }
@@ -144,11 +207,11 @@ internal sealed class AuthService(
 
         if (newHash is not null)
         {
-            audit.Record(AuditEvent.PasswordUpgraded, role);
+            audit.Record(AuditEvent.PasswordUpgraded, account.Role);
         }
 
-        audit.Record(AuditEvent.SignInSucceeded, role);
-        return new UserSession(role, account.Id, account.FullName);
+        audit.Record(AuditEvent.SignInSucceeded, account.Role);
+        return new UserSession(account.Role, account.Id, account.FullName, account.SessionVersion);
     }
 
     private BusinessRuleException Refused(AccountRole role)

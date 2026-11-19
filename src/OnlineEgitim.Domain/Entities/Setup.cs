@@ -1,24 +1,28 @@
 namespace OnlineEgitim.Domain.Entities;
 
 /// <summary>
-/// How far the setup of the database is. It decides who may create the first teacher and whether a
-/// setup key is accepted: only while no teacher can sign in with a password.
+/// How far the setup of the database is. It decides who may create the first administrator and
+/// whether a setup key is accepted: only while no teacher or administrator can sign in with a password.
 /// </summary>
 public enum SetupStage
 {
-    /// <summary>No account at all: the first teacher is created without a setup key.</summary>
+    /// <summary>No account at all: the first administrator is created without a setup key.</summary>
     EmptyDatabase = 0,
 
-    /// <summary>Students but no teacher: the first teacher needs a setup key.</summary>
-    FirstTeacherNeedsKey = 1,
+    /// <summary>Students but no teacher or administrator: the first administrator needs a setup key.</summary>
+    FirstAdminNeedsKey = 1,
 
     /// <summary>
-    /// Teachers exist, but none can sign in with a password (accounts the original application left
-    /// without one): a setup key sets the password of one of them.
+    /// Teachers or administrators exist, but none can sign in with a password (accounts the original
+    /// application left without one): a setup key creates the first administrator, if there is none,
+    /// or sets the password of one of them.
     /// </summary>
-    TeacherPasswordNeedsKey = 2,
+    StaffPasswordNeedsKey = 2,
 
-    /// <summary>A teacher signs in with a password: no setup key is accepted.</summary>
+    /// <summary>
+    /// A teacher or an administrator signs in with a password: no setup key is accepted. A database
+    /// without an administrator gets one from the database owner (docs/promote-admin.sql).
+    /// </summary>
     Completed = 3,
 }
 

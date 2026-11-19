@@ -67,13 +67,10 @@ namespace OnlineEgitim.UI
             var options = new DataAccessOptions { SeedDemoData = AppConfiguration.IsDemoRequested(configuration) };
             using var serviceProvider = ConfigureServices(connectionString, options);
 
-            UserSession? session;
             try
             {
                 // No synchronization context exists yet, so blocking here cannot deadlock.
                 serviceProvider.GetRequiredService<IDatabaseInitializer>().InitializeAsync().GetAwaiter().GetResult();
-                var stage = serviceProvider.GetRequiredService<ISetupService>().GetStageAsync().GetAwaiter().GetResult();
-                session = SignIn(serviceProvider.GetRequiredService<IFormFactory>(), stage);
             }
 #pragma warning disable CA1031 // Startup boundary: report and exit instead of crashing.
             catch (Exception ex)
@@ -83,15 +80,46 @@ namespace OnlineEgitim.UI
                 return 1;
             }
 
-            if (session is null)
-            {
-                return 0;
-            }
-
             var forms = serviceProvider.GetRequiredService<IFormFactory>();
-            Application.Run(session.IsTeacher ? forms.Create<OgretmenForm>(session) : forms.Create<MainForm>(session));
-            return 0;
+            while (true)
+            {
+                UserSession? session;
+                try
+                {
+                    var stage = serviceProvider.GetRequiredService<ISetupService>().GetStageAsync().GetAwaiter().GetResult();
+                    session = SignIn(forms, stage);
+                }
+#pragma warning disable CA1031 // Startup boundary: report and exit instead of crashing.
+                catch (Exception ex)
+#pragma warning restore CA1031
+                {
+                    ErrorReporter.Show(ex);
+                    return 1;
+                }
+
+                if (session is null)
+                {
+                    return 0;
+                }
+
+                // A panel closed because its session ended (signed out, password changed, account
+                // disabled) leads back to the sign-in; any other close ends the application.
+                using var panel = CreatePanel(forms, session);
+                Application.Run(panel);
+                if (panel is not ISessionPanel { SignedOut: true })
+                {
+                    return 0;
+                }
+            }
         }
+
+        /// <summary>The main window of the session's role.</summary>
+        private static Form CreatePanel(IFormFactory forms, UserSession session) => session.Role switch
+        {
+            AccountRole.Admin => forms.Create<YoneticiForm>(session),
+            AccountRole.Teacher => forms.Create<OgretmenForm>(session),
+            _ => forms.Create<MainForm>(session),
+        };
 
         /// <summary>
         /// The first-run setup (without a key) on an empty database, otherwise the sign-in, which offers

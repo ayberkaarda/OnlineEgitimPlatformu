@@ -7,10 +7,10 @@ namespace OnlineEgitim.UI
 {
     /// <summary>
     /// First-run setup: opens by itself on an empty database (no key needed) and from the sign-in while
-    /// students exist but no teacher, where the setup key created in the database is required. The
-    /// person installing the application creates the first teacher account with a password of their
-    /// own; there is no default password. Closes with <see cref="DialogResult.OK"/> and
-    /// <see cref="Session"/> set on success.
+    /// accounts exist but no administrator and no teacher who signs in with a password, where the setup
+    /// key created in the database is required. The person installing the application creates the
+    /// first administrator account with a password of their own; there is no default password. Closes
+    /// with <see cref="DialogResult.OK"/> and <see cref="Session"/> set on success.
     /// </summary>
     public partial class IlkKurulumForm : Form
     {
@@ -43,8 +43,8 @@ namespace OnlineEgitim.UI
         public UserSession? Session { get; private set; }
 
         /// <summary>
-        /// Whether the setup key field is shown: true from the sign-in (the database has students),
-        /// false on an empty database. The database decides again when the teacher is written.
+        /// Whether the setup key field is shown: true from the sign-in (the database has accounts),
+        /// false on an empty database. The database decides again when the administrator is written.
         /// </summary>
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         internal bool KeyRequired
@@ -65,7 +65,7 @@ namespace OnlineEgitim.UI
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         internal IUserPrompts Prompts { get; set; }
 
-        /// <summary>Creates the first teacher; ignored while a previous attempt is still running.</summary>
+        /// <summary>Creates the first administrator; ignored while a previous attempt is still running.</summary>
         internal async Task<UserSession?> CreateAsync()
         {
             UserSession? session = null;
@@ -75,7 +75,7 @@ namespace OnlineEgitim.UI
                 {
                     try
                     {
-                        session = await _setup.CreateFirstTeacherAsync(txtAnahtar.Text, txtAd.Text, txtUzmanlik.Text, txtSifre.Text, txtSifreTekrar.Text);
+                        session = await _setup.CreateFirstAdminAsync(txtAnahtar.Text, txtAd.Text, txtUzmanlik.Text, txtSifre.Text, txtSifreTekrar.Text);
                     }
                     finally
                     {
@@ -99,9 +99,9 @@ namespace OnlineEgitim.UI
         /// <summary>Who gets the setup key and how; the key itself is never shown here.</summary>
         internal static string SetupKeyHint(bool keyRequired) =>
             keyRequired
-                ? "Veritabanında öğrenci hesapları var, öğretmen hesabı yok. İlk öğretmen hesabı yalnızca kurulum anahtarıyla oluşturulur. "
+                ? "Veritabanında hesaplar var, yönetici hesabı yok. İlk yönetici hesabı yalnızca kurulum anahtarıyla oluşturulur. "
                     + SetupKeySource
-                : "Veritabanı boş. İlk öğretmen hesabını oluşturun; şifreyi kendiniz belirlersiniz.";
+                : "Veritabanı boş. İlk yönetici hesabını oluşturun; şifreyi kendiniz belirlersiniz. Öğretmen ve öğrenci hesaplarını sonra yönetici panelinden açarsınız.";
 
         /// <summary>Who creates the setup key; shared by the setup and the recovery window.</summary>
         internal const string SetupKeySource =
@@ -116,7 +116,7 @@ namespace OnlineEgitim.UI
             var session = await CreateAsync();
             if (session is not null)
             {
-                Prompts.Inform("Öğretmen hesabı oluşturuldu.");
+                Prompts.Inform("Yönetici hesabı oluşturuldu.");
                 Session = session;
                 DialogResult = DialogResult.OK;
                 Close();

@@ -25,4 +25,13 @@ internal static class SchemaLimits
 
     /// <summary>Values of <see cref="Domain.Entities.PasswordFormat"/>: 0 PBKDF2 hash, 1 legacy plain text, 2 none.</summary>
     public const string PasswordFormatCheck = "[SifreBicimi] IN (0, 1, 2)";
+
+    /// <summary>A course's capacity: no limit (NULL) or a number of seats from zero up.</summary>
+    public const string CapacityCheck = "[Kontenjan] IS NULL OR [Kontenjan] >= 0";
+
+    /// <summary>Values of the staff table's Rol: 1 teacher, 2 administrator (<see cref="Domain.Entities.AccountRole"/>).</summary>
+    public const string StaffRoleCheck = "[Rol] IN (1, 2)";
+
+    /// <summary>The SQL Server trigger that keeps promotions to administrator with the database owner.</summary>
+    public const string StaffRoleTrigger = "TR_Egitmenler_Rol";
 }
