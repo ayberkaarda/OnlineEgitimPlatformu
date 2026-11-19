@@ -87,6 +87,21 @@ public static class AuditCodes
         _ => throw new ArgumentOutOfRangeException(nameof(auditEvent), auditEvent, "Unknown audit event."),
     };
 
+    /// <summary>
+    /// The code written to a log that the local Windows user can read. It is <see cref="Of(AuditEvent)"/>
+    /// except for the two outcomes of a registration: a new account and a taken name or e-mail address
+    /// share one neutral code, because whoever made the attempt knows its time and could otherwise tell
+    /// from the file whether someone else's name or address is registered.
+    /// </summary>
+    public static string ForPublicLog(AuditEvent auditEvent) => auditEvent switch
+    {
+        AuditEvent.StudentRegistered or AuditEvent.RegistrationNotCompleted => RegistrationSubmitted,
+        _ => Of(auditEvent),
+    };
+
+    /// <summary>The neutral code of <see cref="ForPublicLog"/> for both registration outcomes.</summary>
+    public const string RegistrationSubmitted = "auth.student.registration_submitted";
+
     /// <summary>Lower case role name as it is written to the log.</summary>
     public static string Of(AccountRole? role) => role switch
     {

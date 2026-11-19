@@ -226,8 +226,10 @@ public sealed partial class LoggingTests : IDisposable
         var text = app.CloseAndRead();
         Assert.Contains("Audit recovery.completed teacher", text, StringComparison.Ordinal);
         Assert.Contains("Audit recovery.failed none", text, StringComparison.Ordinal);
-        Assert.Contains("Audit auth.student.registered student", text, StringComparison.Ordinal);
-        Assert.Contains("Audit auth.student.registration_not_completed student", text, StringComparison.Ordinal);
+        // A new and a taken registration leave the same neutral entry.
+        Assert.Equal(2, Regex.Count(text, "Audit auth.student.registration_submitted student"));
+        Assert.DoesNotContain("auth.student.registered", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("registration_not_completed", text, StringComparison.Ordinal);
         // The refusal of the locked account is counted as one more failure, not as a lock.
         Assert.Equal(LoginPolicy.MaxFailedAttempts + 1, Regex.Count(text, "Audit auth.sign_in.failed student"));
         Assert.Contains("Audit auth.sign_in.succeeded student", text, StringComparison.Ordinal);
@@ -285,6 +287,50 @@ public sealed partial class LoggingTests : IDisposable
         Assert.Equal(["[INF] Audit auth.sign_in.failed student", "[WRN] Operation refused: BusinessRuleException"], outcomes[0].Entries);
         Assert.All(outcomes, o => Assert.Equal(outcomes[0].Entries, o.Entries));
         Assert.All(outcomes, o => Assert.Equal(AuthService.CredentialsInvalid, o.Message));
+    }
+
+    /// <summary>
+    /// A registration with a new name and address, with a registered name and with a registered
+    /// address, each in a log of its own: without the time stamps the entries are identical, so the
+    /// file does not tell whether someone else is registered. Only the new registration adds an
+    /// account, and the existing accounts keep their passwords.
+    /// </summary>
+    [Fact]
+    public async Task RegistrationOutcomes_LeaveIdenticalPublicLogEntries()
+    {
+        await using var app = await App.StartAsync(Path.Combine(_directory, "setup"));
+        var auth = app.Get<IAuthService>();
+        await auth.RegisterStudentAsync(StudentName, Email, StudentPassword, Ct);
+        app.CloseAndRead();
+
+        (string Name, string Email)[] attempts =
+        [
+            ("Yeni Öğrenci", "yeni@kayit.test"),
+            (StudentName, "baska@kayit.test"),
+            ("Başka Öğrenci", Email),
+        ];
+        var outcomes = new List<string[]>();
+        foreach (var (name, email) in attempts)
+        {
+            var directory = Path.Combine(_directory, outcomes.Count.ToString(CultureInfo.InvariantCulture));
+            await app.WithLogAsync(directory, async _ =>
+            {
+                await auth.RegisterStudentAsync(name, email, "Baska.Sifre1", Ct);
+                return 0;
+            });
+            outcomes.Add(Lines(File.ReadAllText(Assert.Single(Directory.GetFiles(directory))))
+                .Select(line => StampPattern().Replace(line, string.Empty))
+                .ToArray());
+        }
+
+        Assert.Equal(["[INF] Audit " + AuditCodes.RegistrationSubmitted + " student"], outcomes[0]);
+        Assert.All(outcomes, o => Assert.Equal(outcomes[0], o));
+
+        await using var db = await app.Get<IDbContextFactory<EgitimDbContext>>().CreateDbContextAsync(Ct);
+        Assert.Equal(["Deniz Örnekoğlu", "Yeni Öğrenci"], await db.Students.OrderBy(s => s.Id).Select(s => s.FullName).ToListAsync(Ct));
+        Assert.Equal(Email, await db.Students.Where(s => s.FullName == StudentName).Select(s => s.Email).SingleAsync(Ct));
+        Assert.True((await auth.SignInStudentAsync(StudentName, StudentPassword, Ct)).IsStudent);
+        await Assert.ThrowsAsync<BusinessRuleException>(() => auth.SignInStudentAsync(StudentName, "Baska.Sifre1", Ct));
     }
 
     public void Dispose()
