@@ -296,4 +296,6 @@ internal static class Sessions
     public static UserSession Student { get; } = new(AccountRole.Student, 1, "Mert Deneme");
 
     public static UserSession Teacher { get; } = new(AccountRole.Teacher, 1, "Deniz Örnek");
+
+    public static UserSession Admin { get; } = new(AccountRole.Admin, 1, "Ayla Yönetici");
 }

@@ -96,38 +96,34 @@ internal static class LegacySchemaUpgrader
     private static async Task AcquireUpgradeLockAsync(EgitimDbContext db, CancellationToken cancellationToken)
     {
         var result = new SqlParameter("@result", SqlDbType.Int) { Direction = ParameterDirection.Output };
+
+        // The command outlasts the 60 second wait, so a running upgrade ends as a refused lock, not a timeout.
+        var configured = db.Database.GetCommandTimeout();
+        db.Database.SetCommandTimeout(AppLock.CommandTimeoutFor(UpgradeLockTimeoutMilliseconds, configured));
+        try
+        {
 #pragma warning disable EF1002 // Constant statement; the only parameter is the output value.
-        await db.Database.ExecuteSqlRawAsync(
-            "EXEC @result = sp_getapplock @Resource = N'OnlineEgitim.LegacySchemaUpgrade', @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 60000;",
-            [result],
-            cancellationToken).ConfigureAwait(false);
+            await db.Database.ExecuteSqlRawAsync(
+                "EXEC @result = sp_getapplock @Resource = N'OnlineEgitim.LegacySchemaUpgrade', @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 60000;",
+                [result],
+                cancellationToken).ConfigureAwait(false);
 #pragma warning restore EF1002
+        }
+        finally
+        {
+            db.Database.SetCommandTimeout(configured);
+        }
 
         EnsureLockGranted(result.Value is int code ? code : null);
     }
 
+    /// <summary>How long a start waits for another start's upgrade (the value in the statement above).</summary>
+    private const int UpgradeLockTimeoutMilliseconds = 60_000;
+
     /// <summary>Throws when an sp_getapplock return code means the lock was not granted.</summary>
-    internal static void EnsureLockGranted(int? returnCode)
-    {
-        if (returnCode is >= 0)
-        {
-            return;
-        }
-
-        var reason = returnCode switch
-        {
-            -1 => "the request timed out because another upgrade is still running",
-            -2 => "the request was canceled",
-            -3 => "the request was chosen as a deadlock victim",
-            -999 => "the lock request was invalid",
-            null => "the lock procedure returned no result",
-            _ => "the lock procedure failed",
-        };
-
-        throw new InvalidOperationException(
-            $"The legacy database upgrade lock could not be acquired ({reason}, sp_getapplock returned "
-            + $"{(returnCode?.ToString(CultureInfo.InvariantCulture) ?? "null")}). No changes were made; try again later.");
-    }
+    /// <exception cref="AppLockNotGrantedException">The upgrade lock was not granted.</exception>
+    internal static void EnsureLockGranted(int? returnCode) =>
+        AppLock.EnsureGranted(returnCode, "OnlineEgitim.LegacySchemaUpgrade");
 
     private static async Task<bool> IsLegacyAsync(EgitimDbContext db, CancellationToken cancellationToken)
     {

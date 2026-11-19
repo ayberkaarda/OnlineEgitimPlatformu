@@ -47,7 +47,7 @@ public sealed class FocusTests
         var password = Find<TextBox>(form, "txtSifre");
         Find<TextBox>(form, "txtAd").Text = "Mert Deneme";
         password.Text = "yanlis";
-        Find<Button>(form, "button1").Select();
+        Find<Button>(form, "btnKayit").Select();
 
         var signIn = form.SignInAsync();
         auth.RefuseSignIn();

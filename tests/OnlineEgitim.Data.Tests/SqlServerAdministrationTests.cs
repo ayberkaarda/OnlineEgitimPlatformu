@@ -113,6 +113,38 @@ public sealed class SqlServerAdministrationTests
     }
 
     /// <summary>
+    /// Without any administrator, the application's login still cannot insert one with direct SQL while a
+    /// teacher signs in with a password (an upgraded original database before the owner promotes someone):
+    /// the database refuses what the application refuses. With teachers that have no password, the
+    /// first administrator of the setup can still be written.
+    /// </summary>
+    [Fact]
+    public async Task AppLogin_InsertAdmin_NoAdminButTeachersWithPasswords_IsRefused()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await SqlServerTestDatabase.ReserveAsync(ct);
+        await using (await Race.InitializeAsync(database, ct))
+        {
+        }
+
+        await database.ExecuteAsync($"CREATE USER [{AppUser}] WITHOUT LOGIN", ct);
+        var grants = await File.ReadAllTextAsync(SqlServerTestDatabase.RepositoryFile("docs", "grant-app-login.sql"), ct);
+        await database.ExecuteAsync(grants.Replace("N'OnlineEgitimApp'", $"N'{AppUser}'", StringComparison.Ordinal), ct);
+        var unpooled = new SqlConnectionStringBuilder(database.ConnectionString) { Pooling = false }.ConnectionString;
+        var insert = $"EXECUTE AS USER = N'{AppUser}'; INSERT dbo.Egitmenler (AdSoyad, UzmanlikAlani, Sifre, SifreBicimi, BasarisizGiris, Rol) VALUES (N'Sahte Yönetici', N'x', N'-', 0, 0, 2)";
+        Assert.Equal(0, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Egitmenler WHERE Rol = 2", ct));
+
+        var refused = await Assert.ThrowsAsync<SqlException>(() => SqlServerTestDatabase.ExecuteAsync(unpooled, insert, ct));
+        Assert.Equal(51010, refused.Number);
+        Assert.Equal(0, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Egitmenler WHERE Rol = 2", ct));
+
+        // The same insert is the first administrator of the setup once no teacher has a password.
+        await database.ExecuteAsync("UPDATE dbo.Egitmenler SET Sifre = N'', SifreBicimi = 2", ct);
+        await SqlServerTestDatabase.ExecuteAsync(unpooled, insert, ct);
+        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Egitmenler WHERE Rol = 2", ct));
+    }
+
+    /// <summary>
     /// A sign-in has verified the right password and waits right before it records the success; an
     /// administrator disables the account meanwhile. The success write sees the change and the sign-in
     /// is refused with the usual message, so no session of a disabled account is issued.

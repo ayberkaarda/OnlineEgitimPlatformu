@@ -41,6 +41,60 @@ public sealed class AdministrationUiTests
         Assert.Empty(Find<TextBox>(form, "txtKod").Text);
     });
 
+    /// <summary>
+    /// "Çıkış" (or X) right after "Oluştur" while the account is still being created: the window waits
+    /// for the answer, shows the single use code and stays open so it can be read; the session still
+    /// ends, and the next close goes through.
+    /// </summary>
+    [Fact]
+    public void CreateAccount_ClosingWhileRunning_WaitsAndShowsTheCode() => Run(() =>
+    {
+        var service = new ControlledAdministrationService();
+        using var form = new YoneticiForm(service, new NoFormsFactory(), Admin) { Prompts = new RecordingPrompts() };
+        _ = form.Handle; // a real window message loop, never shown
+        Find<TextBox>(form, "txtAd").Text = "Yeni Öğretmen";
+        Find<TextBox>(form, "txtDetay").Text = "Matematik";
+
+        var create = form.CreateAccountAsync();
+        ((ISessionPanel)form).EndSession(); // what "Çıkış" does
+        Application.DoEvents(); // the posted close arrives while the account is being created
+        form.Close();
+
+        Assert.False(form.IsDisposed);
+        service.Create.SetResult(new RecoveryCode("ABCDE-FGHJK", new DateTime(2026, 3, 3, 10, 0, 0, DateTimeKind.Utc)));
+        Application.DoEvents();
+
+        Assert.True(create.Result);
+        Assert.False(form.IsDisposed);
+        Assert.Equal("ABCDE-FGHJK", Find<TextBox>(form, "txtKod").Text);
+        Assert.EndsWith(YoneticiForm.CloseKeptForCode, Find<Label>(form, "lblKodBitis").Text, StringComparison.Ordinal);
+        Assert.True(form.SignedOut);
+
+        form.Close();
+        Assert.True(form.IsDisposed);
+    });
+
+    [Fact]
+    public void ResetCode_ClosingWhileRunning_WaitsAndShowsTheCode() => Run(() =>
+    {
+        var service = new ControlledAdministrationService();
+        service.NextPage = Page(new AccountListing(AccountRole.Student, 2, "Mert Deneme", "mert@example.com", false, true));
+        using var form = new YoneticiForm(service, new NoFormsFactory(), Admin) { Prompts = new RecordingPrompts() };
+        _ = form.Handle;
+        Assert.True(form.LoadAsync().IsCompletedSuccessfully);
+        Find<ListBox>(form, "lstHesaplar").SelectedIndex = 0;
+
+        var issue = form.IssueResetCodeAsync();
+        form.Close();
+        Assert.False(form.IsDisposed);
+        service.Create.SetResult(new RecoveryCode("KLMNP-QRSTV", new DateTime(2026, 3, 3, 10, 0, 0, DateTimeKind.Utc)));
+        Application.DoEvents();
+
+        Assert.True(issue.Result);
+        Assert.False(form.IsDisposed);
+        Assert.Equal("KLMNP-QRSTV", Find<TextBox>(form, "txtKod").Text);
+    });
+
     [Fact]
     public void Search_AnswersOutOfOrder_ShowOnlyTheLatest() => Run(() =>
     {

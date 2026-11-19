@@ -31,6 +31,17 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) temel alınar
 
 ### Değişenler
 
+- Kendine özgü kimlikle yeniden tasarlanan arayüz: yumuşak mor-gri nötrler üzerinde koyu çivit-mor vurgu ve sıcak
+  güneş sarısı işaret, `assets/logo.svg` dosyasından üretilen yeni logo (yükselen çubuklu bir ekran ve bir kıvılcım) ve
+  "Online Eğitim" adı. Her ekran merkezi tema değerleriyle tek bir çerçeve üzerine yeniden kuruldu (başlık, satır içi
+  ileti şeridi, kartlar, alt bilgi eylemleri); giriş ekranlarında marka paneli var. Sonuçlar, doğrulama ve kural
+  retleri pencere içinde görünür; sorular temalı bir ileti penceresinde sorulur. Listeler iki satırdır ve uzun bir
+  adın gizleyemediği bir durum etiketi taşır (kayıtlı, dolu, kapalı, boş yer, devre dışı, şifresiz); yüklenirken ve
+  boşken bunu söyler. Tek kullanımlık kodlar büyük, eş aralıklı bir alanda bir kez gösterilir. Açık, koyu
+  (`Appearance:Theme`) ve Windows yüksek karşıtlık paletleri; yüksek karşıtlık değişikliği uygulama açıkken izlenir.
+  Monitör başına DPI, çalışma alanıyla sınırlı ve içeriği kaydırılan pencereler, her ekranda klavye sırası ve Esc.
+  Öğrenci ve öğretmen panelinden oturum kapatılabilir; şifre değişince giriş ekranı oturumun neden kapandığını söyler.
+- `tools/Screenshots`, README ekran görüntülerini uydurma bir okulla pencere açmadan çizer ve simgeyi üretir.
 - İlk kurulum ve kurulum anahtarı ilk öğretmen yerine ilk yöneticiyi oluşturur; şifreyle giriş yapan bir öğretmen
   veya yönetici varken kurulum anahtarı reddedilir.
 - Öğretmenin kurtarma kodu şifresi olan öğrenci için de çalışır (unutulan şifre); personel hesapları da "Kodla şifre
@@ -47,6 +58,15 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) temel alınar
 
 ### Düzeltilenler
 
+- Hesap ya da sıfırlama kodu üretilirken yönetici paneli kapatılırsa tek kullanımlık kod kayboluyordu; kapatma artık
+  işlemi bekler ve kod okunana kadar pencere açık kalır.
+- Uygulama kilidi beklemeleri (kurs, yöneticiler, yükseltme) "meşgul, tekrar deneyin" yerine 30 saniyelik komut zaman
+  aşımıyla bitebiliyordu; kilit komutu artık beklemesinden uzun sürebilir ve reddedilen kilit "İşlem meşgul" der.
+- Veritabanında 1000'den büyük kontenjanı olan bir kursu düzenlemek hata veriyordu; alan sınırda, bir uyarıyla açılır.
+- Uygulama login'i, öğretmenler şifreyle giriş yaparken hiç yönetici yoksa doğrudan SQL ile yönetici ekleyebiliyordu;
+  `TR_Egitmenler_Rol` bunu da reddeder (migration `RefuseAdministratorBesideStaffPasswords`). README, tehdit modeli ve
+  demo modu bölümü bunu, kodun ekranda ne kadar kaldığını ve demo veritabanının yöneticisi için
+  `docs/promote-admin.sql` gerektiğini anlatır.
 - Yeni kayıt ile kullanılan ad veya e-postayla yapılan kayıt, kullanıcının okuyabildiği günlük dosyasına farklı
   denetim kodları yazıyordu; ikisi de artık `auth.student.registration_submitted` yazar.
 

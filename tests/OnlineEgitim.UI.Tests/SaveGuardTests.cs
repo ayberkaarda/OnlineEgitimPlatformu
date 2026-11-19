@@ -26,8 +26,8 @@ public sealed class SaveGuardTests
         Assert.Null(second.Result);
         Assert.False(Find<Button>(form, "btnOgrenciGiris").Enabled);
         Assert.False(Find<Button>(form, "btnOgretmenGiris").Enabled);
-        Assert.False(Find<Button>(form, "button1").Enabled);
-        Assert.False(Find<LinkLabel>(form, "lnkKurulum").Enabled);
+        Assert.False(Find<Button>(form, "btnKayit").Enabled);
+        Assert.False(Find<Button>(form, "btnKurulum").Enabled);
     });
 
     [Theory]
@@ -45,7 +45,7 @@ public sealed class SaveGuardTests
 
         Assert.Equal(setupLink, form.OffersFirstAdminSetup);
         Assert.Equal(keyRecovery, form.OffersSetupKeyRecovery);
-        Assert.Contains("kurulum anahtarı", Find<LinkLabel>(form, "lnkKurulum").Text, StringComparison.Ordinal);
+        Assert.Contains("kurulum anahtarı", Find<Button>(form, "btnKurulum").Text, StringComparison.Ordinal);
     });
 
     [Fact]

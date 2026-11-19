@@ -2,6 +2,7 @@ using System.Globalization;
 using OnlineEgitim.Business.Services;
 using OnlineEgitim.Business.Validation;
 using OnlineEgitim.UI.Infrastructure;
+using OnlineEgitim.UI.Theming;
 
 namespace OnlineEgitim.UI
 {
@@ -9,8 +10,12 @@ namespace OnlineEgitim.UI
     /// Teacher panel: the teacher's own courses, the students of the selected course, adding notes,
     /// creating, editing and deleting courses.
     /// </summary>
-    public partial class OgretmenForm : Form, ISessionPanel
+    public sealed class OgretmenForm : AppDialog, ISessionPanel
     {
+        internal const string ChooseACourse = "Öğrencilerini görmek için soldan bir kurs seçin.";
+
+        internal const string NoStudents = "Bu kursa henüz kayıtlı öğrenci yok.";
+
         private readonly ICourseService _courses;
         private readonly IEnrollmentService _enrollments;
         private readonly IFormFactory _forms;
@@ -20,8 +25,27 @@ namespace OnlineEgitim.UI
         private readonly RequestSequence _studentRequests = new();
         private bool _binding;
         private bool _signedOut;
+        private string? _signOutNotice;
+
+        private readonly Label lblOgretmen = new() { Name = nameof(lblOgretmen), AutoSize = true, UseMnemonic = false, TextAlign = ContentAlignment.MiddleRight };
+        private readonly ThemedListBox lstKurslar = new() { Name = nameof(lstKurslar), AccessibleName = "Kurslarım" };
+        private readonly ThemedButton btnYeniKurs = FormLayout.Button(nameof(btnYeniKurs), "Yeni kurs", ButtonKind.Primary, Glyphs.Add);
+        private readonly ThemedButton btnDuzenle = FormLayout.Button(nameof(btnDuzenle), "Düzenle", ButtonKind.Secondary, Glyphs.Edit);
+        private readonly ThemedButton btnSil = FormLayout.Button(nameof(btnSil), "Sil", ButtonKind.Danger, Glyphs.Delete);
+        private readonly ThemedListBox lstKayitliOgrenciler = new() { Name = nameof(lstKayitliOgrenciler), AccessibleName = "Kayıtlı öğrenciler", TwoLines = false };
+        private readonly TextBox txtNotEkle = new() { Name = nameof(txtNotEkle), Multiline = true, AcceptsReturn = true, ScrollBars = ScrollBars.Vertical, MaxLength = InputRules.NoteMaxLength };
+        private readonly ThemedButton btnNotEkle = FormLayout.Button(nameof(btnNotEkle), "Not ekle", ButtonKind.Secondary, Glyphs.Note);
+        private readonly ThemedButton btnKurtarmaKodu = FormLayout.Button(nameof(btnKurtarmaKodu), "Kurtarma kodu üret", ButtonKind.Secondary, Glyphs.Key);
+        private readonly ThemedButton btnSifre = FormLayout.Button(nameof(btnSifre), "Şifremi değiştir", ButtonKind.Secondary, Glyphs.Lock);
+        private readonly ThemedButton btnCikis = FormLayout.Button(nameof(btnCikis), "Oturumu kapat", ButtonKind.Secondary);
 
         public OgretmenForm(ICourseService courses, IEnrollmentService enrollments, IFormFactory forms, UserSession session)
+            : base(
+                "Öğretmen paneli",
+                "Kurslarınızı yönetin, not ekleyin ve öğrencileriniz için kurtarma kodu üretin.",
+                Glyphs.Note,
+                new Size(1040, 640),
+                new Size(900, 560))
         {
             ArgumentNullException.ThrowIfNull(courses);
             ArgumentNullException.ThrowIfNull(enrollments);
@@ -32,18 +56,23 @@ namespace OnlineEgitim.UI
             _enrollments = enrollments;
             _forms = forms;
             _session = session;
-            Prompts = new MessageBoxPrompts(this);
+            BuildLayout();
+            lblOgretmen.Text = session.DisplayName + Environment.NewLine + "Öğretmen hesabı";
 
-            InitializeComponent();
-            Icon = AppAssets.Icon;
-            Text = AppText.Title + " - " + Text;
-            pictureBox1.Image = AppAssets.Logo;
-            pictureBox1.SizeMode = PictureBoxSizeMode.Zoom;
-            txtNotEkle.MaxLength = InputRules.NoteMaxLength;
             Load += async (_, _) => await LoadAsync();
+            lstKurslar.SelectedIndexChanged += async (_, _) => await LoadStudentsAsync();
+            btnSil.Click += async (_, _) => await DeleteCourseAsync();
+            btnDuzenle.Click += async (_, _) => await EditSelectedAsync();
+            btnYeniKurs.Click += async (_, _) => await AddCoursesAsync();
+            btnNotEkle.Click += async (_, _) => await AddNoteAsync();
+            btnKurtarmaKodu.Click += (_, _) => OpenRecoveryCode();
+            btnSifre.Click += (_, _) => ChangePassword();
+            btnCikis.Click += (_, _) => ((ISessionPanel)this).EndSession();
         }
 
         bool ISessionPanel.SignedOut => _signedOut;
+
+        string? ISessionPanel.SignOutNotice => _signOutNotice;
 
         /// <summary>Whether the session ended and the sign-in has to be shown again.</summary>
         internal bool SignedOut => _signedOut;
@@ -54,32 +83,40 @@ namespace OnlineEgitim.UI
             SessionEnd.Close(this);
         }
 
-        /// <summary>Information dialogs; replaced in tests so no window opens.</summary>
-        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        internal IUserPrompts Prompts { get; set; }
-
         /// <summary>
         /// Lists the teacher's courses. Rebinding the list is not a selection by the user: no student
         /// list is requested for it, and the previous selection and its students are cleared.
         /// </summary>
-        internal Task LoadAsync() =>
-            this.RunAsync(async () =>
+        internal async Task LoadAsync()
+        {
+            lstKurslar.IsLoading = true;
+            try
             {
-                var courses = await _courses.GetTeachingAsync(_session);
-                _binding = true;
-                try
+                await this.RunAsync(async () =>
                 {
-                    lstKurslar.ReplaceItems(courses.Select(c => new CourseItem(c, CourseItemStyle.Teaching)));
-                    lstKurslar.ClearSelected();
-                }
-                finally
-                {
-                    _binding = false;
-                }
+                    var courses = await _courses.GetTeachingAsync(_session);
+                    _binding = true;
+                    try
+                    {
+                        lstKurslar.ReplaceItems(courses.Select(c => new CourseItem(c, CourseItemStyle.Teaching)));
+                        lstKurslar.ClearSelected();
+                    }
+                    finally
+                    {
+                        _binding = false;
+                    }
 
-                _studentRequests.Next(); // answers to earlier selections are stale now
-                lstKayitliOgrenciler.Items.Clear();
-            });
+                    _studentRequests.Next(); // answers to earlier selections are stale now
+                    lstKayitliOgrenciler.Items.Clear();
+                    lstKayitliOgrenciler.IsLoading = false;
+                    lstKayitliOgrenciler.EmptyText = ChooseACourse;
+                });
+            }
+            finally
+            {
+                lstKurslar.IsLoading = false;
+            }
+        }
 
         /// <summary>
         /// Lists the students of the selected course. Selections can change faster than the answers
@@ -96,17 +133,31 @@ namespace OnlineEgitim.UI
             lstKayitliOgrenciler.Items.Clear();
             if (lstKurslar.SelectedItem is not CourseItem selected)
             {
+                lstKayitliOgrenciler.IsLoading = false;
+                lstKayitliOgrenciler.EmptyText = ChooseACourse;
                 return;
             }
 
-            await this.RunAsync(async () =>
+            lstKayitliOgrenciler.EmptyText = NoStudents;
+            lstKayitliOgrenciler.IsLoading = true;
+            try
             {
-                var students = await _enrollments.GetStudentsAsync(_session, selected.Course.Id);
-                if (_studentRequests.IsLatest(request) && !IsDisposed)
+                await this.RunAsync(async () =>
                 {
-                    lstKayitliOgrenciler.ReplaceItems(students);
+                    var students = await _enrollments.GetStudentsAsync(_session, selected.Course.Id);
+                    if (_studentRequests.IsLatest(request) && !IsDisposed)
+                    {
+                        lstKayitliOgrenciler.ReplaceItems(students);
+                    }
+                });
+            }
+            finally
+            {
+                if (_studentRequests.IsLatest(request))
+                {
+                    lstKayitliOgrenciler.IsLoading = false;
                 }
-            });
+            }
         }
 
         /// <summary>Adds the note to the selected course; ignored while a previous one is still being saved.</summary>
@@ -166,11 +217,7 @@ namespace OnlineEgitim.UI
             return ran;
         }
 
-        private async void lstKurslar_SelectedIndexChanged(object? sender, EventArgs e) => await LoadStudentsAsync();
-
-        private async void btnSil_Click(object? sender, EventArgs e) => await DeleteCourseAsync();
-
-        private async void btnDuzenle_Click(object? sender, EventArgs e)
+        private async Task EditSelectedAsync()
         {
             if (_deleteCourse.IsRunning)
             {
@@ -194,18 +241,11 @@ namespace OnlineEgitim.UI
             if (saved)
             {
                 await LoadAsync();
+                Prompts.Inform("Kurs kaydedildi.");
             }
         }
 
-        private async void btnNotEkle_Click(object? sender, EventArgs e) => await AddNoteAsync();
-
-        private void btnKurtarmaKodu_Click(object? sender, EventArgs e)
-        {
-            using var form = _forms.Create<KurtarmaKoduForm>(_session);
-            form.ShowDialog(this);
-        }
-
-        private async void btnYeniKurs_Click(object? sender, EventArgs e)
+        private async Task AddCoursesAsync()
         {
             int added;
             using (var form = _forms.Create<KursEklemeForm>(_session))
@@ -219,12 +259,68 @@ namespace OnlineEgitim.UI
                 await LoadAsync();
             }
         }
-        private void btnSifre_Click(object? sender, EventArgs e)
+
+        private void OpenRecoveryCode()
+        {
+            using var form = _forms.Create<KurtarmaKoduForm>(_session);
+            form.ShowDialog(this);
+        }
+
+        private void ChangePassword()
         {
             if (PasswordChange.Show(this, _forms, _session))
             {
+                _signOutNotice = SifreDegistirForm.Done;
                 ((ISessionPanel)this).EndSession();
             }
+        }
+
+        private void BuildLayout()
+        {
+            Name = nameof(OgretmenForm);
+            lblOgretmen.Font = Theme.Fonts.Body;
+            lblOgretmen.ForeColor = Theme.Current.TextSecondary;
+            SetHeaderAside(lblOgretmen);
+
+            // The teacher's courses with the actions on them.
+            lstKurslar.Describe = item => item is CourseItem course ? course.Row() : new ListRow(item.ToString() ?? string.Empty);
+            lstKurslar.EmptyText = "Henüz bir kursunuz yok. Yeni kurs ile ilk kursunuzu açın.";
+            btnYeniKurs.Margin = btnDuzenle.Margin = new Padding(0, 0, Spacing.S, 0);
+            btnSil.Margin = Padding.Empty;
+            var courseActions = FormLayout.Bar("courseActions", (btnYeniKurs, false), (btnDuzenle, false), (FormLayout.Spacer(), true), (btnSil, false));
+            courseActions.Margin = new Padding(0, Spacing.M, 0, 0);
+            var coursesCard = FormLayout.Card("coursesCard", "Kurslarım", FormLayout.Page("coursesPage", (lstKurslar, true), (courseActions, false)));
+            coursesCard.Margin = new Padding(0, 0, Spacing.S, 0);
+
+            // The students of the selected course.
+            lstKayitliOgrenciler.EmptyText = ChooseACourse;
+            var studentsCard = FormLayout.Card("studentsCard", "Kayıtlı öğrenciler", lstKayitliOgrenciler);
+
+            // A note to the selected course.
+            var noteField = FormLayout.Field("Seçili kursa &not", FormLayout.Input(txtNotEkle, Sizes.NoteHeight));
+            noteField.Margin = new Padding(0, 0, 0, Spacing.S);
+            var noteHint = FormLayout.Hint("Kursun öğrencileri notu kurs detayında görür.");
+            noteHint.Name = "noteHint";
+            noteHint.Margin = new Padding(Spacing.M, 0, 0, 0);
+            btnNotEkle.Margin = Padding.Empty;
+            var noteActions = FormLayout.Bar("noteActions", (btnNotEkle, false), (noteHint, true));
+            var noteCard = FormLayout.Card("noteCard", null, FormLayout.Stack("noteForm", noteField, noteActions), fill: false);
+
+            // Recovery codes for the students of the teacher's courses.
+            var codeHint = FormLayout.Hint("Şifresi olmayan ya da şifresini unutan öğrenciniz için tek kullanımlık kod.");
+            codeHint.Name = "codeHint";
+            codeHint.Margin = new Padding(Spacing.M, 0, 0, 0);
+            btnKurtarmaKodu.Margin = Padding.Empty;
+            var codeCard = FormLayout.Card("codeCard", null, FormLayout.Bar("codeActions", (btnKurtarmaKodu, false), (codeHint, true)), fill: false);
+            codeCard.Margin = Padding.Empty;
+
+            var right = FormLayout.Page("rightColumn", (studentsCard, true), (noteCard, false), (codeCard, false));
+            Content.Controls.Add(FormLayout.Columns("layout", coursesCard, 55, right));
+
+            CancelButton = btnCikis;
+            SetFooterNote("Düzenlemek, silmek ya da not eklemek için soldan bir kurs seçin.");
+            SetFooterButtons(btnSifre, btnCikis);
+            FinishLayout();
         }
     }
 }

@@ -105,6 +105,37 @@ public sealed class SqlServerCourseTests
     }
 
     /// <summary>
+    /// A course lock held by another instance makes an enrollment wait for the whole lock timeout and then
+    /// end as "busy" (the lock was refused), never as a command timeout, even when the configured command
+    /// timeout is shorter than the lock wait. Nothing is written; once the lock is free the enrollment works.
+    /// </summary>
+    [Fact]
+    public async Task CourseLock_HeldByAnotherSession_ReportsTheLockMessage()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await SqlServerTestDatabase.ReserveAsync(ct);
+        int courseId;
+        await using (var setup = await Race.InitializeAsync(database, ct))
+        {
+            courseId = await setup.GetRequiredService<ICourseService>().CreateAsync(Teacher(DenizId), "Kilitli Ders", "Konu", 5, ct);
+        }
+
+        await using var provider = database.BuildServicesWithCommandTimeout(5);
+        var enrollments = provider.GetRequiredService<IEnrollmentService>();
+
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        await using (await database.HoldAppLockAsync(Persistence.CourseLock.Resource(courseId), ct))
+        {
+            await Assert.ThrowsAsync<Persistence.AppLockNotGrantedException>(() => enrollments.EnrollAsync(Student(MertId), courseId, ct));
+        }
+
+        Assert.True(waited.Elapsed >= TimeSpan.FromSeconds(25), "The enrollment did not wait for the course lock.");
+        Assert.Equal(0, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.OgrenciKurslar WHERE DersID = @id", ct, ("@id", courseId)));
+        await enrollments.EnrollAsync(Student(MertId), courseId, ct);
+        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.OgrenciKurslar WHERE DersID = @id AND AyrilmaTarihi IS NULL", ct, ("@id", courseId)));
+    }
+
+    /// <summary>
     /// The teacher deletes an empty course (confirmed for no students) while a student joins it: one of
     /// the two wins. A deleted course never keeps an active enrollment, and a refused deletion leaves
     /// the student in the course.

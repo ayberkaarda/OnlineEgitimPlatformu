@@ -42,6 +42,19 @@ public sealed class ErrorReporterTests
         Assert.StartsWith("Veritabanı hazırlanamadı.", message, StringComparison.Ordinal);
     }
 
+    /// <summary>A refused application lock reads as "busy, try again"; during the start-up upgrade it says so.</summary>
+    [Fact]
+    public void Describe_RefusedLock_SaysBusy()
+    {
+        var busy = ErrorReporter.Describe(new AggregateException(new Data.Persistence.AppLockNotGrantedException("x")));
+        var upgrade = ErrorReporter.Describe(new Data.Persistence.DatabaseInitializationException(new Data.Persistence.AppLockNotGrantedException("x")));
+
+        Assert.Equal(ErrorReporter.BusyMessage, busy);
+        Assert.Contains("meşgul", busy, StringComparison.Ordinal);
+        Assert.Contains("tekrar deneyin", busy, StringComparison.Ordinal);
+        Assert.Equal(ErrorReporter.UpgradeBusyMessage, upgrade);
+    }
+
     /// <summary>
     /// A refused legacy upgrade names its fixed problem kinds and counts to the operator, on screen and
     /// in the log; the exception message and row contents stay out of both.

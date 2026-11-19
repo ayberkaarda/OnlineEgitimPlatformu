@@ -54,7 +54,7 @@ Protection Law (KVKK, Law No. 6698). This document lists technical measures only
 |---|---|---|
 | A student calling teacher operations or the reverse | Every service call takes the session issued by `AuthService` (its constructor is internal) and checks the role first; a wrong role is refused and audited as `access.denied` | Mitigated |
 | Account management by a non-administrator | The administration service checks the Admin role and the session against the database before any repository; course views refuse administrators, whose ids are staff ids and are never compared with student ids | Mitigated |
-| Becoming an administrator without the owner | The application has no promotion path. `docs/promote-admin.sql` runs only for `db_owner`, and the trigger `TR_Egitmenler_Rol` refuses raising a role, or inserting an administrator while one exists, for anyone else, also for the application's login with direct SQL (SQL Server test `Promotion_IsTheDatabaseOwnersRightOnly`) | Mitigated |
+| Becoming an administrator without the owner | The application has no promotion path. `docs/promote-admin.sql` runs only for `db_owner`, and the trigger `TR_Egitmenler_Rol` refuses, for anyone else and also for the application's login with direct SQL, raising a role and inserting an administrator while another administrator exists or another teacher or administrator has a password; the only insert left is the first administrator of the setup, which the application allows in the same case only (SQL Server tests `Promotion_IsTheDatabaseOwnersRightOnly`, `AppLogin_InsertAdmin_NoAdminButTeachersWithPasswords_IsRefused`) | Mitigated |
 | Locking everybody out of account management | The last administrator who can sign in (enabled, with a password) can be neither disabled nor demoted; the check and the write run under one `sp_getapplock` lock, so two administrators disabling each other leave one (SQL Server race test) | Mitigated |
 | Overfilling a course, a capacity below its students, a student left in a deleted course | Enrolling, leaving, changing the capacity and deleting take one `sp_getapplock` lock per course and count the active enrollments under it; a deletion runs only for the number of students the teacher confirmed (SQL Server race tests for the last seat, lowering the capacity and deleting during an enrollment) | Mitigated |
 | IDOR on editing or deleting a course | Ownership is part of every conditional write; another teacher's, a deleted and a missing course get the same answer and nothing changes | Mitigated |
@@ -85,7 +85,7 @@ Protection Law (KVKK, Law No. 6698). This document lists technical measures only
 | A teacher or administrator taking over an account with a code | Accepted by design: an administrator issues codes for any account and a teacher for students of their own courses, also for accounts with a password (forgotten passwords). The old password works until the code is used, the issuance is audited (`recovery.code.issued` with the issuer's role) and using the code ends every session of the account | Accepted, documented |
 | Guessing a code | 10 characters (50 bits), stored as a salted PBKDF2 hash, valid for 24 hours and once; wrong codes count towards the sign-in lockout and every refusal costs one verification | Mitigated |
 | A code used twice, after it was replaced, or by a disabled account | Completing a recovery is one conditional `UPDATE` that requires the verified code, an unexpired code, no lock and an enabled account, removes the code and increases the session version; a password change also removes an open code (SQL Server tests: one code used twice at once, a change racing a reset) | Mitigated |
-| Codes or passwords in the log or on screen longer than needed | A code is shown once in a read-only field and cleared with the next action; it is never logged (test `AdministrationAndResets_LeaveNoCodeInTheLog`) | Mitigated |
+| Codes or passwords in the log or on screen longer than needed | A code is shown only in the window that issued it, in a read-only field; it stays there until the next code is issued (or the next account created) in that window, or the window closes, and is never logged (test `AdministrationAndResets_LeaveNoCodeInTheLog`). Searching, paging and other account changes leave it on screen, so the administrator closes the panel once the code is passed on | Mitigated |
 
 ## Logging
 
@@ -120,8 +120,8 @@ Protection Law (KVKK, Law No. 6698). This document lists technical measures only
 - A passwordless student enrolled in no course cannot be recovered once a teacher can sign in with a password;
   the operator sets such a password in the database or enrolls the student so that a teacher can issue a code.
 - Names are the sign-in identifiers and are easy to guess; the lockout and the password are the only protection.
-- A teacher can reset the password of a student of their own courses; schools that do not want this should leave
-  resets to administrators.
+- A teacher can reset the password of a student of their own courses. There is no setting that turns this off; a
+  school that wants resets by administrators only has to make that a rule for its teachers.
 - A database whose teachers already sign in with passwords needs the database owner (`docs/promote-admin.sql`) for
   its first administrator; the application offers no way around this.
 - The setup key is checked with SHA-256, not a slow hash; its 128 random bits make that sufficient.

@@ -53,6 +53,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Redesigned interface with its own identity: a deep indigo violet accent with a warm sun yellow mark on soft
+  violet-grey neutrals, a new logo (a screen with rising bars and a spark) rasterized from `assets/logo.svg`, and the
+  "Online Eğitim" name. Every screen is rebuilt on one frame (header, inline message strip, cards, footer actions)
+  from central theme tokens; sign-in screens have a brand panel. Results, validation and rule refusals appear inline;
+  questions use a themed message window. Lists show two lines with a status pill (own enrollment, full, closed,
+  free seats, disabled, passwordless) that a long name never hides, and say when they load or are empty; single use
+  codes appear once in a large monospaced field. Light, dark (`Appearance:Theme`) and Windows high contrast palettes;
+  high contrast changes are followed while the application runs. Per monitor DPI, windows limited to the working
+  area with scrolling content, keyboard order and Esc on every screen. Student and teacher panels can sign out, and
+  the sign-in screen says why a session ended after a password change.
+- `tools/Screenshots` draws the README screenshots offscreen from an invented school and rasterizes the icon.
 - The first-run setup and the setup key create the first administrator instead of the first teacher; a setup key is
   refused while any teacher or administrator signs in with a password.
 - A teacher's recovery code also works for a student who has a password (forgotten password), and staff accounts set
@@ -71,6 +82,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Closing the administrator panel while an account or a reset code was being made lost the single use code; the
+  close now waits and the window stays open until the code has been read.
+- Application lock waits (course, administrators, upgrade) could end as a 30 second command timeout instead of the
+  "busy, try again" path; the lock command now outlasts its wait and a refused lock reads "İşlem meşgul".
+- Editing a course whose stored capacity is above 1000 (set outside the application) threw; it opens at the limit
+  with a warning.
+- The application's login could insert an administrator with direct SQL while none existed even though teachers sign
+  in with passwords; `TR_Egitmenler_Rol` now refuses that too (migration `RefuseAdministratorBesideStaffPasswords`).
+  The README, the threat model and the demo mode section describe this, how long a code stays on screen and that a
+  demo database needs `docs/promote-admin.sql` for its administrator.
 - A new registration and one with a taken name or e-mail address wrote different audit codes to the user readable
   log file; both now write `auth.student.registration_submitted`.
 

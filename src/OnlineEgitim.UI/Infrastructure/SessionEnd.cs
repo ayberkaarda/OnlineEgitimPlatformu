@@ -8,6 +8,9 @@ internal interface ISessionPanel
 
     /// <summary>Marks the session as ended and closes the window once the current operation finished.</summary>
     void EndSession();
+
+    /// <summary>Why the session ended, when the sign-in screen should say so (for example after a password change).</summary>
+    string? SignOutNotice => null;
 }
 
 /// <summary>Ends the session of the window chain a form belongs to.</summary>

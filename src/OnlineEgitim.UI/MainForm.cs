@@ -3,6 +3,7 @@ using OnlineEgitim.Business.Services;
 using OnlineEgitim.Business.Validation;
 using OnlineEgitim.Domain.Entities;
 using OnlineEgitim.UI.Infrastructure;
+using OnlineEgitim.UI.Theming;
 
 namespace OnlineEgitim.UI
 {
@@ -10,7 +11,7 @@ namespace OnlineEgitim.UI
     /// Student panel: the course catalogue with search, filters and pages, course details, joining and
     /// leaving a course and the student's own courses.
     /// </summary>
-    public partial class MainForm : Form, ISessionPanel
+    public sealed class MainForm : AppDialog, ISessionPanel
     {
         internal static string LeaveQuestion(string courseName) =>
             $"\"{courseName}\" dersinden ayrılmak istiyor musunuz? Ayrıldığınızda dersin notlarını göremezsiniz ve aynı gün yeniden kaydolamazsınız.";
@@ -23,9 +24,35 @@ namespace OnlineEgitim.UI
         private readonly RequestSequence _searchRequests = new();
         private readonly bool _ready;
         private bool _signedOut;
+        private string? _signOutNotice;
         private int _pageIndex;
 
+        private readonly Label lblhosgeldin = new() { Name = nameof(lblhosgeldin), AutoSize = true, UseMnemonic = false, TextAlign = ContentAlignment.MiddleRight };
+        private readonly TextBox txtAra = new() { Name = nameof(txtAra), MaxLength = InputRules.CourseNameMaxLength, PlaceholderText = "Örneğin: Python" };
+        private readonly TextBox txtKonu = new() { Name = nameof(txtKonu), MaxLength = InputRules.TopicMaxLength };
+        private readonly TextBox txtOgretmen = new() { Name = nameof(txtOgretmen), MaxLength = InputRules.PersonNameMaxLength };
+        private readonly ThemedComboBox cmbKayit = FormLayout.Picker(nameof(cmbKayit), 200);
+        private readonly ThemedCheckBox chkBosKontenjan = new() { Name = nameof(chkBosKontenjan), Text = "Yalnız &boş yeri olanlar" };
+        private readonly ThemedButton btnAra = FormLayout.Button(nameof(btnAra), "Ara", ButtonKind.Secondary, Glyphs.Search);
+        private readonly ThemedButton btnTemizle = FormLayout.Button(nameof(btnTemizle), "Temizle", ButtonKind.Subtle);
+        private readonly ThemedListBox lstKurslar = new() { Name = nameof(lstKurslar), AccessibleName = "Kurs kataloğu" };
+        private readonly ThemedButton btnOnceki = FormLayout.Button(nameof(btnOnceki), "‹ Önceki", ButtonKind.Subtle);
+        private readonly Label lblSayfa = FormLayout.Hint(string.Empty);
+        private readonly ThemedButton btnSonraki = FormLayout.Button(nameof(btnSonraki), "Sonraki ›", ButtonKind.Subtle);
+        private readonly ThemedButton btnKursDetay = FormLayout.Button(nameof(btnKursDetay), "Kurs detayı", ButtonKind.Secondary, Glyphs.Details);
+        private readonly ThemedButton btnDersSec = FormLayout.Button(nameof(btnDersSec), "Derse kaydol", ButtonKind.Primary);
+        private readonly ThemedButton btnAyril = FormLayout.Button(nameof(btnAyril), "Dersten ayrıl", ButtonKind.Danger);
+        private readonly ThemedButton btnKurslarim = FormLayout.Button(nameof(btnKurslarim), "Kurslarım", ButtonKind.Secondary, Glyphs.Library);
+        private readonly ThemedButton btnSifre = FormLayout.Button(nameof(btnSifre), "Şifremi değiştir", ButtonKind.Secondary, Glyphs.Lock);
+        private readonly ThemedButton btnCikis = FormLayout.Button(nameof(btnCikis), "Oturumu kapat", ButtonKind.Secondary);
+
         public MainForm(ICourseService courses, IEnrollmentService enrollments, IFormFactory forms, UserSession session)
+            : base(
+                "Öğrenci paneli",
+                "Kurs arayın, kaydolun ya da ayrılın; kayıtlı olduğunuz kursların notlarını görün.",
+                Glyphs.Library,
+                new Size(1040, 640),
+                new Size(900, 560))
         {
             ArgumentNullException.ThrowIfNull(courses);
             ArgumentNullException.ThrowIfNull(enrollments);
@@ -36,22 +63,31 @@ namespace OnlineEgitim.UI
             _enrollments = enrollments;
             _forms = forms;
             _session = session;
-            Prompts = new MessageBoxPrompts(this);
-
-            InitializeComponent();
-            Icon = AppAssets.Icon;
-            Text = AppText.Title + " - " + Text;
+            BuildLayout();
             lblhosgeldin.Text = $"Hoş geldin, {session.DisplayName}!";
-            txtAra.MaxLength = InputRules.CourseNameMaxLength;
-            txtKonu.MaxLength = InputRules.TopicMaxLength;
-            txtOgretmen.MaxLength = InputRules.PersonNameMaxLength;
             cmbKayit.Items.AddRange(["Tümü", "Kayıtlı olduklarım", "Kayıtlı olmadıklarım"]);
             cmbKayit.SelectedIndex = 0; // set before _ready: not a choice of the user, no search
             _ready = true;
+
             Load += async (_, _) => await LoadAsync();
+            chkBosKontenjan.CheckedChanged += Filter_Changed;
+            cmbKayit.SelectedIndexChanged += Filter_Changed;
+            btnAra.Click += async (_, _) => await SearchAsync(0);
+            btnTemizle.Click += async (_, _) => await ClearFiltersAsync();
+            btnOnceki.Click += async (_, _) => await SearchAsync(Math.Max(0, _pageIndex - 1));
+            btnSonraki.Click += async (_, _) => await SearchAsync(_pageIndex + 1);
+            btnKursDetay.Click += (_, _) => OpenDetails();
+            btnDersSec.Click += async (_, _) => await EnrollAsync();
+            btnAyril.Click += async (_, _) => await LeaveAsync();
+            lstKurslar.DoubleClick += (_, _) => OpenDetails();
+            btnKurslarim.Click += (_, _) => OpenMyCourses();
+            btnSifre.Click += (_, _) => ChangePassword();
+            btnCikis.Click += (_, _) => ((ISessionPanel)this).EndSession();
         }
 
         bool ISessionPanel.SignedOut => _signedOut;
+
+        string? ISessionPanel.SignOutNotice => _signOutNotice;
 
         /// <summary>Whether the session ended and the sign-in has to be shown again.</summary>
         internal bool SignedOut => _signedOut;
@@ -61,10 +97,6 @@ namespace OnlineEgitim.UI
             _signedOut = true;
             SessionEnd.Close(this);
         }
-
-        /// <summary>Information dialogs; replaced in tests so no window opens.</summary>
-        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        internal IUserPrompts Prompts { get; set; }
 
         /// <summary>The search the filters describe, for page <paramref name="pageIndex"/>.</summary>
         internal CourseSearch CurrentSearch(int pageIndex) => new(
@@ -91,23 +123,34 @@ namespace OnlineEgitim.UI
         {
             var request = _searchRequests.Next();
             var search = CurrentSearch(pageIndex);
-            await this.RunAsync(async () =>
+            lstKurslar.IsLoading = true;
+            try
             {
-                var result = await _courses.SearchCatalogAsync(_session, search);
-                if (!_searchRequests.IsLatest(request) || IsDisposed)
+                await this.RunAsync(async () =>
                 {
-                    return;
-                }
+                    var result = await _courses.SearchCatalogAsync(_session, search);
+                    if (!_searchRequests.IsLatest(request) || IsDisposed)
+                    {
+                        return;
+                    }
 
-                _pageIndex = result.PageIndex;
-                lstKurslar.ReplaceItems(result.Items.Select(e => new CourseItem(e.Course, CourseItemStyle.Catalog, e.Enrolled)));
-                lstKurslar.ClearSelected();
-                lblSayfa.Text = string.Create(
-                    CultureInfo.CurrentCulture,
-                    $"Sayfa {result.PageIndex + 1} / {result.PageCount} ({result.TotalCount} kurs)");
-                btnOnceki.Enabled = result.PageIndex > 0;
-                btnSonraki.Enabled = result.PageIndex + 1 < result.PageCount;
-            });
+                    _pageIndex = result.PageIndex;
+                    lstKurslar.ReplaceItems(result.Items.Select(e => new CourseItem(e.Course, CourseItemStyle.Catalog, e.Enrolled)));
+                    lstKurslar.ClearSelected();
+                    lblSayfa.Text = string.Create(
+                        CultureInfo.CurrentCulture,
+                        $"Sayfa {result.PageIndex + 1} / {result.PageCount} ({result.TotalCount} kurs)");
+                    btnOnceki.Enabled = result.PageIndex > 0;
+                    btnSonraki.Enabled = result.PageIndex + 1 < result.PageCount;
+                });
+            }
+            finally
+            {
+                if (_searchRequests.IsLatest(request))
+                {
+                    lstKurslar.IsLoading = false;
+                }
+            }
         }
 
         /// <summary>Joins the selected course; ignored while a previous join or leave is still running.</summary>
@@ -174,7 +217,7 @@ namespace OnlineEgitim.UI
             return ran;
         }
 
-        private void btnKursDetay_Click(object? sender, EventArgs e)
+        private void OpenDetails()
         {
             if (lstKurslar.SelectedItem is not CourseItem item)
             {
@@ -186,16 +229,6 @@ namespace OnlineEgitim.UI
             details.ShowDialog(this);
         }
 
-        private async void btnDersSec_Click(object? sender, EventArgs e) => await EnrollAsync();
-
-        private async void btnAyril_Click(object? sender, EventArgs e) => await LeaveAsync();
-
-        private async void btnAra_Click(object? sender, EventArgs e) => await SearchAsync(0);
-
-        private async void btnOnceki_Click(object? sender, EventArgs e) => await SearchAsync(Math.Max(0, _pageIndex - 1));
-
-        private async void btnSonraki_Click(object? sender, EventArgs e) => await SearchAsync(_pageIndex + 1);
-
         private async void Filter_Changed(object? sender, EventArgs e)
         {
             if (_ready)
@@ -204,7 +237,7 @@ namespace OnlineEgitim.UI
             }
         }
 
-        private async void btnTemizle_Click(object? sender, EventArgs e)
+        private async Task ClearFiltersAsync()
         {
             txtAra.Clear();
             txtKonu.Clear();
@@ -214,17 +247,72 @@ namespace OnlineEgitim.UI
             await SearchAsync(0);
         }
 
-        private void btnKurslarim_Click(object? sender, EventArgs e)
+        private void OpenMyCourses()
         {
             using var mine = _forms.Create<KursNotlariForm>(_session);
             mine.ShowDialog(this);
         }
-        private void btnSifre_Click(object? sender, EventArgs e)
+
+        private void ChangePassword()
         {
             if (PasswordChange.Show(this, _forms, _session))
             {
+                _signOutNotice = SifreDegistirForm.Done;
                 ((ISessionPanel)this).EndSession();
             }
+        }
+
+        private void BuildLayout()
+        {
+            Name = nameof(MainForm);
+            lblhosgeldin.Font = Theme.Fonts.Body;
+            lblhosgeldin.ForeColor = Theme.Current.TextSecondary;
+            SetHeaderAside(lblhosgeldin);
+
+            // Search card: the filters and the search actions.
+            var name = FormLayout.Field("&Kurs adı", FormLayout.Input(txtAra));
+            var topic = FormLayout.Field("K&onu", FormLayout.Input(txtKonu));
+            var teacher = FormLayout.Field("Öğ&retmen", FormLayout.Input(txtOgretmen));
+            var enrollment = FormLayout.Field("Kayıt &durumu", cmbKayit);
+            name.Margin = topic.Margin = teacher.Margin = enrollment.Margin = new Padding(0, 0, 0, Spacing.M);
+            chkBosKontenjan.Margin = new Padding(0, 0, 0, Spacing.L);
+            btnAra.Margin = new Padding(0, 0, Spacing.S, 0);
+            btnTemizle.Margin = Padding.Empty;
+            var searchActions = FormLayout.Bar("searchActions", (btnAra, false), (btnTemizle, false), (FormLayout.Spacer(), true));
+            var filters = FormLayout.Stack("filterForm", name, topic, teacher, enrollment, chkBosKontenjan, searchActions);
+            chkBosKontenjan.Dock = DockStyle.None;
+            chkBosKontenjan.Anchor = AnchorStyles.Left | AnchorStyles.Top;
+            var searchCard = FormLayout.Card("searchCard", "Kurs ara", filters);
+            filters.Dock = DockStyle.Top;
+            searchCard.Margin = new Padding(0, 0, Spacing.S, 0);
+
+            // Catalogue card: the list, its pages and the actions on the selected course.
+            lstKurslar.Describe = item => item is CourseItem course ? course.Row() : new ListRow(item.ToString() ?? string.Empty);
+            lstKurslar.EmptyText = "Aramanıza uyan kurs yok. Filtreleri değiştirin ya da Temizle ile hepsini görün.";
+            lblSayfa.Name = nameof(lblSayfa);
+            lblSayfa.AutoSize = true;
+            lblSayfa.TextAlign = ContentAlignment.MiddleCenter;
+            lblSayfa.Margin = new Padding(Spacing.S, 0, Spacing.S, 0);
+            btnOnceki.Enabled = false;
+            btnSonraki.Enabled = false;
+            btnOnceki.Margin = btnSonraki.Margin = Padding.Empty;
+            var pager = FormLayout.Bar("pager", (btnOnceki, false), (FormLayout.Spacer("pagerSpacerLeft"), true), (lblSayfa, false), (FormLayout.Spacer("pagerSpacerRight"), true), (btnSonraki, false));
+            pager.Margin = new Padding(0, Spacing.S, 0, 0);
+            btnKursDetay.Margin = new Padding(0, 0, Spacing.S, 0);
+            btnDersSec.Margin = new Padding(0, 0, Spacing.S, 0);
+            btnAyril.Margin = Padding.Empty;
+            var actions = FormLayout.Bar("courseActions", (btnKursDetay, false), (FormLayout.Spacer(), true), (btnDersSec, false), (btnAyril, false));
+            actions.Margin = new Padding(0, Spacing.M, 0, 0);
+            var catalogCard = FormLayout.Card("catalogCard", "Kurs kataloğu", FormLayout.Page("catalogPage", (lstKurslar, true), (pager, false), (actions, false)));
+            catalogCard.Margin = Padding.Empty;
+
+            Content.Controls.Add(FormLayout.Columns("layout", searchCard, 32, catalogCard));
+
+            AcceptButton = btnAra;
+            CancelButton = btnCikis;
+            SetFooterNote("Kaydolmak, ayrılmak ya da notları görmek için listeden bir kurs seçin.");
+            SetFooterButtons(btnKurslarim, btnSifre, btnCikis);
+            FinishLayout();
         }
     }
 }

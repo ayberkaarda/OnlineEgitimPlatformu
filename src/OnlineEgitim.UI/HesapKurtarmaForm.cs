@@ -1,7 +1,9 @@
+using System.Globalization;
 using OnlineEgitim.Business.Security;
 using OnlineEgitim.Business.Services;
 using OnlineEgitim.Business.Validation;
 using OnlineEgitim.UI.Infrastructure;
+using OnlineEgitim.UI.Theming;
 
 namespace OnlineEgitim.UI
 {
@@ -12,7 +14,7 @@ namespace OnlineEgitim.UI
     /// password, the founder may use the setup key the database owner created instead.
     /// Closes with <see cref="DialogResult.OK"/> and <see cref="Session"/> set on success.
     /// </summary>
-    public partial class HesapKurtarmaForm : Form
+    public sealed class HesapKurtarmaForm : AppDialog
     {
         internal const string StudentHint =
             "Şifreniz yoksa veya unuttuysanız dersinizin öğretmeninden ya da yöneticiden tek kullanımlık bir kurtarma kodu isteyin; kod 24 saat geçerlidir. "
@@ -35,26 +37,32 @@ namespace OnlineEgitim.UI
         private readonly ISetupService _setup;
         private readonly ExclusiveOperation _recover = new();
 
+        private readonly SegmentButton rbOgrenci = new() { Name = nameof(rbOgrenci), Text = "Öğrenci", Checked = true };
+        private readonly SegmentButton rbOgretmen = new() { Name = nameof(rbOgretmen), Text = "Öğretmen / Yönetici" };
+        private readonly Label lblAciklama = FormLayout.Text(nameof(lblAciklama));
+        private readonly TextBox txtAd = new() { Name = nameof(txtAd), MaxLength = InputRules.PersonNameMaxLength };
+        private readonly TextBox txtKod = new() { Name = nameof(txtKod), MaxLength = 64, UseSystemPasswordChar = true };
+        private readonly TextBox txtSifre = new() { Name = nameof(txtSifre), MaxLength = PasswordPolicy.MaxLength, UseSystemPasswordChar = true };
+        private readonly TextBox txtSifreTekrar = new() { Name = nameof(txtSifreTekrar), MaxLength = PasswordPolicy.MaxLength, UseSystemPasswordChar = true };
+        private readonly ThemedButton btnKurtar = FormLayout.Button(nameof(btnKurtar), "Şifreyi belirle", ButtonKind.Primary);
+        private readonly ThemedButton btnIptal = FormLayout.Button(nameof(btnIptal), "İptal", ButtonKind.Secondary);
+        private Label lblKod = null!;
+
         public HesapKurtarmaForm(IRecoveryService recovery, ISetupService setup)
+            : base("Kodla şifre belirle", "Tek kullanımlık kodla ilk şifrenizi ya da unuttuğunuz şifrenin yerine yenisini belirleyin.", Glyphs.Key, new Size(640, 600), new Size(520, 520), modal: true)
         {
             ArgumentNullException.ThrowIfNull(recovery);
             ArgumentNullException.ThrowIfNull(setup);
 
             _recovery = recovery;
             _setup = setup;
-            Prompts = new MessageBoxPrompts(this);
-
-            InitializeComponent();
+            BuildLayout();
             _recover.HoldClosingOf(this);
-            Icon = AppAssets.Icon;
-            Text = AppText.Title + " - " + Text;
-            txtAd.MaxLength = InputRules.PersonNameMaxLength;
-            txtKod.MaxLength = 64;
-            txtSifre.MaxLength = PasswordPolicy.MaxLength;
-            txtSifreTekrar.MaxLength = PasswordPolicy.MaxLength;
-            AcceptButton = btnKurtar;
-            CancelButton = btnIptal;
             SetupKeyAccepted = false;
+
+            rbOgrenci.CheckedChanged += rbRol_CheckedChanged;
+            rbOgretmen.CheckedChanged += rbRol_CheckedChanged;
+            btnKurtar.Click += async (_, _) => await RecoverAndCloseAsync();
         }
 
         /// <summary>
@@ -75,10 +83,6 @@ namespace OnlineEgitim.UI
 
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public UserSession? Session { get; private set; }
-
-        /// <summary>Information dialogs; replaced in tests so no window opens.</summary>
-        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        internal IUserPrompts Prompts { get; set; }
 
         /// <summary>Whether the staff recovery (teacher or administrator) is selected.</summary>
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
@@ -127,6 +131,17 @@ namespace OnlineEgitim.UI
             return session;
         }
 
+        private async Task RecoverAndCloseAsync()
+        {
+            var session = await RecoverAsync();
+            if (session is not null)
+            {
+                Session = session;
+                DialogResult = DialogResult.OK;
+                Close();
+            }
+        }
+
         private void ShowMode()
         {
             txtKod.Clear();
@@ -147,6 +162,8 @@ namespace OnlineEgitim.UI
                 lblKod.Text = "Kurtarma Kodu";
                 lblAciklama.Text = _setupKeyAccepted ? StudentHintWithSetupKey : StudentHint;
             }
+
+            txtKod.AccessibleName = lblKod.Text;
         }
 
         private void rbRol_CheckedChanged(object? sender, EventArgs e)
@@ -157,16 +174,46 @@ namespace OnlineEgitim.UI
             }
         }
 
-        private async void btnKurtar_Click(object? sender, EventArgs e)
+        private void BuildLayout()
         {
-            var session = await RecoverAsync();
-            if (session is not null)
+            Name = nameof(HesapKurtarmaForm);
+            var role = new FlowLayoutPanel
             {
-                Prompts.Inform("Şifreniz belirlendi. Bundan sonra bu şifreyle giriş yapabilirsiniz.");
-                Session = session;
-                DialogResult = DialogResult.OK;
-                Close();
-            }
+                Name = "roleSegments",
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                WrapContents = false,
+                Margin = new Padding(0, 0, 0, Spacing.L),
+            };
+            role.Controls.Add(rbOgrenci);
+            role.Controls.Add(rbOgretmen);
+            var roleField = FormLayout.Field("Hesap türü", role);
+            roleField.Margin = new Padding(0, 0, 0, Spacing.M);
+
+            var note = FormLayout.Note("recoveryNote", Glyphs.Info, lblAciklama);
+            var name = FormLayout.Field("&Ad soyad", FormLayout.Input(txtAd));
+            var code = FormLayout.Field("Kurtarma Kodu", FormLayout.Input(txtKod));
+            lblKod = (Label)code.Controls[0];
+            lblKod.Name = nameof(lblKod);
+            lblKod.UseMnemonic = false;
+            var passwords = FormLayout.FieldRow(
+                "passwordRow",
+                (FormLayout.Field("&Yeni şifre", FormLayout.Input(txtSifre), string.Create(CultureInfo.CurrentCulture, $"En az {PasswordPolicy.MinLength} karakter.")), 50),
+                (FormLayout.Field("Yeni şifre &tekrar", FormLayout.Input(txtSifreTekrar)), 50));
+            name.Margin = code.Margin = new Padding(0, 0, 0, Spacing.M);
+
+            var card = FormLayout.Card("recoveryCard", null, FormLayout.Stack("recoveryForm", roleField, name, code, passwords), fill: false);
+            card.Margin = Padding.Empty;
+            role.Dock = DockStyle.None;
+            role.Anchor = AnchorStyles.Left | AnchorStyles.Top;
+            Content.Controls.Add(FormLayout.Page("recoveryPage", (note, false), (card, false)));
+
+            AcceptButton = btnKurtar;
+            CancelButton = btnIptal;
+            btnIptal.DialogResult = DialogResult.Cancel;
+            SetFooterNote("Şifre belirlenince hesabınızla giriş yapılır.");
+            SetFooterButtons(btnKurtar, btnIptal);
+            FinishLayout();
         }
     }
 }
