@@ -53,7 +53,8 @@ public abstract class AppDialog : Form, IStatusSurface
         _bodyContent = new Panel
         {
             Name = "bodyContent",
-            Padding = new Padding(Spacing.XL, Spacing.L, Spacing.XL, 0),
+            // The bottom padding keeps the last card off the footer's hairline.
+            Padding = new Padding(Spacing.XL, Spacing.L, Spacing.XL, Spacing.L),
         };
         _bodyContent.Controls.Add(Content);
         _bodyContent.Controls.Add(_status);

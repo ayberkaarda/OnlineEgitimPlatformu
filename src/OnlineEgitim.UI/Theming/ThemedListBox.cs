@@ -43,7 +43,9 @@ internal sealed class ThemedListBox : ListBox, IThemeAware
     public ThemedListBox()
     {
         DrawMode = DrawMode.OwnerDrawFixed;
-        IntegralHeight = false;
+
+        // Whole rows only: the space left below the last row is the list's own background, so no row is cut.
+        IntegralHeight = true;
         BorderStyle = BorderStyle.None;
         Font = Theme.Fonts.Body;
         Margin = Padding.Empty;
@@ -74,6 +76,23 @@ internal sealed class ThemedListBox : ListBox, IThemeAware
         set
         {
             _twoLines = value;
+            ItemHeight = RowHeight();
+        }
+    }
+
+    /// <summary>
+    /// Whether a single-line row wraps its whole text over as many lines as it needs (course notes) instead of
+    /// ending in an ellipsis. The rows are measured again when the list's width changes.
+    /// </summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool WrapText
+    {
+        get => DrawMode == DrawMode.OwnerDrawVariable;
+        set
+        {
+            _twoLines = !value && _twoLines;
+            DrawMode = value ? DrawMode.OwnerDrawVariable : DrawMode.OwnerDrawFixed;
+            IntegralHeight = !value;
             ItemHeight = RowHeight();
         }
     }
@@ -177,6 +196,45 @@ internal sealed class ThemedListBox : ListBox, IThemeAware
         ItemHeight = RowHeight();
     }
 
+    private int _measuredWidth;
+
+    protected override void OnMeasureItem(MeasureItemEventArgs e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        base.OnMeasureItem(e);
+        if (!WrapText || e.Index < 0 || e.Index >= Items.Count)
+        {
+            return;
+        }
+
+        var text = (Describe?.Invoke(Items[e.Index]) ?? new ListRow(GetItemText(Items[e.Index]) ?? string.Empty)).Primary;
+        var width = Math.Max(1, ClientSize.Width - Theme.Px(this, Spacing.M + 2) - Theme.Px(this, Spacing.M));
+        var measured = TextRenderer.MeasureText(e.Graphics, text, Font, new Size(width, int.MaxValue), WrapFlags);
+        e.ItemHeight = Math.Clamp(measured.Height + (2 * Theme.Px(this, Spacing.S)), RowHeight(), 255);
+        _measuredWidth = ClientSize.Width;
+    }
+
+    protected override void OnClientSizeChanged(EventArgs e)
+    {
+        base.OnClientSizeChanged(e);
+        if (WrapText && IsHandleCreated && Items.Count > 0 && ClientSize.Width != _measuredWidth && ClientSize.Width > 0)
+        {
+            // A variable height list measures its rows only when they are added.
+            _measuredWidth = ClientSize.Width;
+            BeginUpdate();
+            try
+            {
+                RefreshItems();
+            }
+            finally
+            {
+                EndUpdate();
+            }
+        }
+    }
+
+    private const TextFormatFlags WrapFlags = TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix | TextFormatFlags.TextBoxControl;
+
     protected override void OnDrawItem(DrawItemEventArgs e)
     {
         ArgumentNullException.ThrowIfNull(e);
@@ -217,7 +275,15 @@ internal sealed class ThemedListBox : ListBox, IThemeAware
             ? new Rectangle(left, e.Bounds.Y + pad, width, strong.Height)
             : new Rectangle(left, e.Bounds.Y, width, e.Bounds.Height);
         var (primaryBounds, statusBounds) = SplitLine(firstLine, StatusWidth(g, row.Status), Theme.Px(this, Spacing.S));
-        TextRenderer.DrawText(g, row.Primary, twoLines ? strong : Font, primaryBounds, primary, back, LineFlags);
+        if (WrapText)
+        {
+            var area = new Rectangle(left, e.Bounds.Y + pad, width, Math.Max(0, e.Bounds.Height - (2 * pad)));
+            TextRenderer.DrawText(g, row.Primary, Font, area, primary, back, WrapFlags | TextFormatFlags.EndEllipsis);
+        }
+        else
+        {
+            TextRenderer.DrawText(g, row.Primary, twoLines ? strong : Font, primaryBounds, primary, back, LineFlags);
+        }
         if (row.Status is { Length: > 0 } status)
         {
             DrawPill(g, status, statusBounds, selected, row.StatusTone);
