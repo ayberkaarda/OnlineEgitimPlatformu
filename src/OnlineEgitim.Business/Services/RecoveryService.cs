@@ -96,17 +96,24 @@ internal sealed class RecoveryService(
             throw Refused();
         }
 
-        var verified = student.PasswordFormat == PasswordFormat.None
-            && student.RecoveryCodeHash is { } codeHash
-            && student.RecoveryCodeExpires > now
-            && passwordHasher.Verify(given, codeHash, PasswordFormat.Pbkdf2) != PasswordVerificationResult.Failed;
+        // Exactly one verification on every path, real or simulated: an account without a usable code
+        // (none, expired, or a password set meanwhile) costs what a wrong code costs.
+        var usableHash = student.PasswordFormat == PasswordFormat.None && student.RecoveryCodeExpires > now
+            ? student.RecoveryCodeHash
+            : null;
+        bool verified;
+        if (usableHash is null)
+        {
+            passwordHasher.SimulateVerification(given);
+            verified = false;
+        }
+        else
+        {
+            verified = passwordHasher.Verify(given, usableHash, PasswordFormat.Pbkdf2) != PasswordVerificationResult.Failed;
+        }
+
         if (!verified)
         {
-            if (student.RecoveryCodeHash is null)
-            {
-                passwordHasher.SimulateVerification(given);
-            }
-
             // Wrong codes count like wrong passwords, so a code cannot be guessed.
             await accounts.RecordFailedLoginAsync(
                 AccountRole.Student,
