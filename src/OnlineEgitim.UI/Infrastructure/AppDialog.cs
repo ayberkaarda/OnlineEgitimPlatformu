@@ -467,7 +467,13 @@ public abstract class AppDialog : Form, IStatusSurface
                 var dy = Math.Min(a.Bottom, b.Bottom) - Math.Max(a.Top, b.Top);
                 if (dx > 0 && dy > 0)
                 {
-                    if (dy <= dx)
+                    // Two cells of one table row that run into each other need width, whatever the shape of the
+                    // overlap: a taller window never widens a squeezed row of buttons.
+                    if (parent is TableLayoutPanel table && SameRow(table, children[i], children[j]))
+                    {
+                        width = Math.Max(width, dx);
+                    }
+                    else if (dy <= dx)
                     {
                         height = Math.Max(height, dy);
                     }
@@ -480,6 +486,13 @@ public abstract class AppDialog : Form, IStatusSurface
         }
 
         return new Size(width, height);
+    }
+
+    private static bool SameRow(TableLayoutPanel table, Control first, Control second)
+    {
+        var a = table.GetPositionFromControl(first);
+        var b = table.GetPositionFromControl(second);
+        return a.Row == b.Row && a.Column != b.Column;
     }
 
     private static (FlowLayoutPanel Actions, Label Note, Control Footer) BuildFooter()
