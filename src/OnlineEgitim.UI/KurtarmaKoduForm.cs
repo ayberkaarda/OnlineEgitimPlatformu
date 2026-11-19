@@ -24,6 +24,7 @@ namespace OnlineEgitim.UI
             _session = session;
 
             InitializeComponent();
+            _issue.HoldClosingOf(this);
             Icon = AppAssets.Icon;
             Text = AppText.Title + " - " + Text;
             txtAd.MaxLength = InputRules.PersonNameMaxLength;

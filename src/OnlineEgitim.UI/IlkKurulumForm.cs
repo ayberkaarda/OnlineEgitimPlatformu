@@ -24,6 +24,7 @@ namespace OnlineEgitim.UI
             Prompts = new MessageBoxPrompts(this);
 
             InitializeComponent();
+            _create.HoldClosingOf(this);
             Icon = AppAssets.Icon;
             Text = AppText.Title + " - " + Text;
             lblAciklama.Text = SetupKeyHint(setup.IssueSetupKey());

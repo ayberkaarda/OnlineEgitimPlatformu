@@ -142,6 +142,46 @@ public sealed class SaveGuardTests
         Assert.Equal(1, form.CoursesAdded);
     });
 
+    /// <summary>
+    /// The teacher closes the new course window (X or Alt+F4) while the course is being saved. The
+    /// window stays open until the save finished, so the teacher panel reads the final number of new
+    /// courses and reloads its list after the commit, once.
+    /// </summary>
+    [Fact]
+    public void AddCourse_CloseWhilePending_RefreshesAfterCommit() => Run(() =>
+    {
+        var courses = new ControlledCourseService();
+        using var form = new KursEklemeForm(courses, Sessions.Teacher) { Prompts = new RecordingPrompts() };
+        _ = form.Handle; // a real window message loop, never shown
+        Find<TextBox>(form, "txtKursAd").Text = "Grafik";
+        var closedWith = new List<int>();
+        form.FormClosed += (_, _) => closedWith.Add(form.CoursesAdded);
+
+        var add = form.AddAsync();
+        form.Close();
+
+        Assert.False(form.IsDisposed);
+        Assert.Empty(closedWith);
+        courses.CompleteCreate();
+        Application.DoEvents();
+
+        Assert.True(add.Result);
+        Assert.Equal([1], closedWith);
+        Assert.True(form.IsDisposed);
+        Assert.Equal(1, courses.CreateCalls);
+    });
+
+    [Fact]
+    public void AddCourse_CloseWhileIdle_ClosesAtOnce() => Run(() =>
+    {
+        using var form = new KursEklemeForm(new ControlledCourseService(), Sessions.Teacher) { Prompts = new RecordingPrompts() };
+        _ = form.Handle;
+
+        form.Close();
+
+        Assert.True(form.IsDisposed);
+    });
+
     [Fact]
     public void Recovery_StudentAndTeacherModes_SendTheirProofOnce() => Run(() =>
     {

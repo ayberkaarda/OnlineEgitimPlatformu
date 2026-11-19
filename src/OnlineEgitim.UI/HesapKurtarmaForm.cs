@@ -30,6 +30,7 @@ namespace OnlineEgitim.UI
             Prompts = new MessageBoxPrompts(this);
 
             InitializeComponent();
+            _recover.HoldClosingOf(this);
             Icon = AppAssets.Icon;
             Text = AppText.Title + " - " + Text;
             txtAd.MaxLength = InputRules.PersonNameMaxLength;
