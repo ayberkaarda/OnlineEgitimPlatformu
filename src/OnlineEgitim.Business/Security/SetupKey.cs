@@ -54,11 +54,33 @@ public sealed class FileSetupKeyStore : ISetupKeyStore
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);
 
         _directory = directory;
-        _environmentKey = environmentKey is { Length: >= MinimumEnvironmentKeyLength } ? Normalize(environmentKey) : null;
-        KeyFilePath = _environmentKey is null ? Path.Combine(directory, KeyFileName) : null;
+
+        // The length rule applies to what is compared, so it is checked after normalization: dashes
+        // and spaces do not count. A configured but too short key is a configuration error; it is not
+        // silently replaced by a key file.
+        if (!string.IsNullOrEmpty(environmentKey))
+        {
+            var normalized = Normalize(environmentKey);
+            if (normalized.Length >= MinimumEnvironmentKeyLength)
+            {
+                _environmentKey = normalized;
+            }
+            else
+            {
+                EnvironmentKeyInvalid = true;
+            }
+        }
+
+        KeyFilePath = _environmentKey is null && !EnvironmentKeyInvalid ? Path.Combine(directory, KeyFileName) : null;
     }
 
     public string? KeyFilePath { get; }
+
+    /// <summary>
+    /// Whether <see cref="EnvironmentVariable"/> is set to a value that is too short once normalized;
+    /// no key is accepted then.
+    /// </summary>
+    public bool EnvironmentKeyInvalid { get; }
 
     /// <summary>The key folder is %LOCALAPPDATA%\OnlineEgitim; the environment variable takes precedence.</summary>
     public static FileSetupKeyStore CreateDefault() =>
@@ -99,12 +121,17 @@ public sealed class FileSetupKeyStore : ISetupKeyStore
 
     public bool TryConsume(string? candidate)
     {
-        if (string.IsNullOrWhiteSpace(candidate))
+        if (EnvironmentKeyInvalid || candidate is null)
         {
             return false;
         }
 
         var given = Normalize(candidate);
+        if (given.Length == 0)
+        {
+            return false;
+        }
+
         return _environmentKey is not null ? TryConsumeEnvironmentKey(given) : TryConsumeFileKey(given);
     }
 

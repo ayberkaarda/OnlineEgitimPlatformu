@@ -232,12 +232,35 @@ public sealed class FileSetupKeyStoreTests : IDisposable
         Assert.All(Directory.GetFiles(_directory), f => Assert.DoesNotContain("ortam", File.ReadAllText(f), StringComparison.OrdinalIgnoreCase));
     }
 
-    [Fact]
-    public void EnvironmentKey_TooShort_IsIgnored()
+    /// <summary>
+    /// The minimum length counts the characters that remain after normalization: dashes and spaces
+    /// do not make a short key long. A rejected environment key is a configuration error, not a reason
+    /// to fall back to another key: no key file is issued and nothing is accepted.
+    /// </summary>
+    [Theory]
+    [InlineData("----------------", "-")]
+    [InlineData("A---------------", "a")]
+    [InlineData("      kisa      ", "kisa")]
+    [InlineData("k i s a - a n a h t a r", "kisaanahtar")]
+    public void EnvironmentKey_NormalizedLengthMustMeetMinimum(string configured, string candidate)
     {
-        var store = new FileSetupKeyStore(_directory, "kisa");
+        Assert.True(configured.Length >= FileSetupKeyStore.MinimumEnvironmentKeyLength);
+        var store = new FileSetupKeyStore(_directory, configured);
+        store.EnsureIssued();
 
-        Assert.NotNull(store.KeyFilePath);
-        Assert.False(store.TryConsume("kisa"));
+        Assert.True(store.EnvironmentKeyInvalid);
+        Assert.Null(store.KeyFilePath);
+        Assert.False(store.TryConsume(candidate));
+        Assert.False(store.TryConsume(configured));
+        Assert.False(Directory.Exists(_directory) && Directory.GetFiles(_directory).Length > 0);
+    }
+
+    [Fact]
+    public void EnvironmentKey_LongEnoughAfterNormalization_IsAccepted()
+    {
+        var store = new FileSetupKeyStore(_directory, " ortam-anahtari-1234 ");
+
+        Assert.False(store.EnvironmentKeyInvalid);
+        Assert.True(store.TryConsume("ORTAMANAHTARI1234"));
     }
 }
