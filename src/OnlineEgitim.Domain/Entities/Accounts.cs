@@ -62,6 +62,15 @@ public sealed class Student : Account
 {
     /// <summary>E-mail address; unique.</summary>
     public string Email { get; set; } = string.Empty;
+
+    /// <summary>
+    /// PBKDF2 hash of the single use recovery code a teacher issued for an account without a password
+    /// (<see cref="PasswordFormat.None"/>), or <see langword="null"/>. The code itself is never stored.
+    /// </summary>
+    public string? RecoveryCodeHash { get; set; }
+
+    /// <summary>UTC time after which <see cref="RecoveryCodeHash"/> no longer works.</summary>
+    public DateTime? RecoveryCodeExpires { get; set; }
 }
 
 /// <summary>A teacher (table: Egitmenler).</summary>

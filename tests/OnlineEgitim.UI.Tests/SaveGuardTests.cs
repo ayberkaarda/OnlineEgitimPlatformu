@@ -143,6 +143,60 @@ public sealed class SaveGuardTests
     });
 
     [Fact]
+    public void Recovery_StudentAndTeacherModes_SendTheirProofOnce() => Run(() =>
+    {
+        var recovery = new PendingRecoveryService();
+        var setup = new PendingSetupService();
+        using var form = new HesapKurtarmaForm(recovery, setup) { Prompts = new RecordingPrompts() };
+        Assert.False(form.TeacherMode);
+        Assert.Equal(0, setup.KeyRequests); // no key file for a student recovery
+        Assert.Equal(HesapKurtarmaForm.StudentHint, Find<Label>(form, "lblAciklama").Text);
+        Find<TextBox>(form, "txtAd").Text = "Şifresiz Öğrenci";
+        Find<TextBox>(form, "txtKod").Text = "ABCDE-FGHJK";
+
+        var first = form.RecoverAsync();
+        var second = form.RecoverAsync();
+
+        Assert.Equal(["student:Şifresiz Öğrenci/ABCDE-FGHJK"], recovery.Calls);
+        Assert.False(first.IsCompleted);
+        Assert.Null(second.Result);
+        Assert.False(Find<Button>(form, "btnKurtar").Enabled);
+        Assert.False(Find<RadioButton>(form, "rbOgretmen").Enabled);
+        recovery.RefuseRecovery();
+        Assert.Null(first.Result);
+        Assert.True(Find<Button>(form, "btnKurtar").Enabled);
+
+        form.TeacherMode = true;
+        Assert.Equal(1, setup.KeyRequests);
+        Assert.Equal("Kurulum Anahtarı", Find<Label>(form, "lblKod").Text);
+        Assert.Contains(@"C:\Kurulum\setup-key.txt", Find<Label>(form, "lblAciklama").Text, StringComparison.Ordinal);
+        Find<TextBox>(form, "txtKod").Text = "KURUCU-ANAHTARI";
+        _ = form.RecoverAsync();
+        Assert.Equal("teacher:Şifresiz Öğrenci/KURUCU-ANAHTARI", recovery.Calls[^1]);
+        Assert.Empty(Find<TextBox>(form, "txtSifre").Text);
+    });
+
+    [Fact]
+    public void RecoveryCode_WhilePending_IsNotIssuedTwiceAndShowsTheCode() => Run(() =>
+    {
+        var recovery = new PendingRecoveryService();
+        using var form = new KurtarmaKoduForm(recovery, Sessions.Teacher);
+        Find<TextBox>(form, "txtAd").Text = "Şifresiz Öğrenci";
+
+        var first = form.IssueAsync();
+        var second = form.IssueAsync();
+
+        Assert.Equal(["issue:Şifresiz Öğrenci"], recovery.Calls);
+        Assert.True(second.IsCompletedSuccessfully && !second.Result);
+        Assert.False(Find<Button>(form, "btnUret").Enabled);
+        recovery.CompleteIssue("ABCDE-FGHJK");
+        Assert.True(first.Result);
+        Assert.Equal("ABCDE-FGHJK", Find<TextBox>(form, "txtKod").Text);
+        Assert.True(Find<TextBox>(form, "txtKod").ReadOnly);
+        Assert.StartsWith("Son geçerlilik: ", Find<Label>(form, "lblBitis").Text, StringComparison.Ordinal);
+    });
+
+    [Fact]
     public void Setup_WhilePending_IsNotSentTwice() => Run(() =>
     {
         var setup = new PendingSetupService();

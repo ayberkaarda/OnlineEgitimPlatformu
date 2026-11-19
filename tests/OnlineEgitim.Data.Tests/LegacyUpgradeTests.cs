@@ -131,6 +131,75 @@ public sealed class LegacyUpgradeTests
         Assert.Contains("FK_Dersler_Egitmenler", orphan.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Accounts that the original application left without a password never sign in, with an empty or
+    /// any other password. A student gets a first password with a code issued by a teacher, a teacher
+    /// with the setup key; refused attempts change nothing and each account keeps its id and courses.
+    /// </summary>
+    [Fact]
+    public async Task PasswordlessAccount_VerifiedRecovery_PreservesIdentityAndEnrollments()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await SqlServerTestDatabase.CreateAsync(ct);
+        await database.ExecuteAsync(LegacySchema, ct);
+        await database.ExecuteAsync(LegacyData + "UPDATE dbo.Egitmenler SET Sifre = NULL WHERE EgitmenID = 5;", ct);
+        await using var provider = database.BuildServices();
+        await provider.GetRequiredService<IDatabaseInitializer>().InitializeAsync(ct);
+        var auth = provider.GetRequiredService<IAuthService>();
+        var recovery = provider.GetRequiredService<IRecoveryService>();
+        const string Student = "SELECT CONCAT(Sifre, N'|', SifreBicimi, N'|', KurtarmaKodu, N'|', KurtarmaBitis) FROM dbo.Ogrenci WHERE OgrenciID = 4";
+        const string Teacher = "SELECT CONCAT(Sifre, N'|', SifreBicimi) FROM dbo.Egitmenler WHERE EgitmenID = 5";
+
+        foreach (var password in new[] { " ", "x", "Gizli.Sifre9", Guid.NewGuid().ToString("N") })
+        {
+            await Assert.ThrowsAsync<BusinessRuleException>(() => auth.SignInStudentAsync("Şifresiz Öğrenci", password, ct));
+            await Assert.ThrowsAsync<BusinessRuleException>(() => auth.SignInTeacherAsync("Diğer Öğretmen", password, ct));
+        }
+
+        await database.ExecuteAsync("UPDATE dbo.Ogrenci SET BasarisizGiris = 0 WHERE OgrenciID = 4; UPDATE dbo.Egitmenler SET BasarisizGiris = 0 WHERE EgitmenID = 5", ct);
+        var studentBefore = await database.TextAsync(Student, ct);
+        var teacherBefore = await database.TextAsync(Teacher, ct);
+        Assert.Equal("|2||", studentBefore);
+        Assert.Equal("|2", teacherBefore);
+
+        // Without a code or the key nothing changes.
+        await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.RecoverStudentAsync("Şifresiz Öğrenci", "ABCDE-FGHJK", "Yeni.Sifre1", "Yeni.Sifre1", ct));
+        await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.RecoverTeacherAsync("YANLIS-ANAHTAR", "Diğer Öğretmen", "Yeni.Sifre1", "Yeni.Sifre1", ct));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => recovery.IssueStudentCodeAsync(TestServices.Student(2), "Şifresiz Öğrenci", ct));
+        Assert.Equal(studentBefore, await database.TextAsync(Student, ct));
+        Assert.Equal(teacherBefore, await database.TextAsync(Teacher, ct));
+
+        // A teacher issues a code; a wrong code is refused, the right one works once.
+        var teacher = await auth.SignInTeacherAsync("Eski Öğretmen", "1234", ct);
+        await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.IssueStudentCodeAsync(teacher, "Eski Öğrenci", ct)); // has a password
+        var code = await recovery.IssueStudentCodeAsync(teacher, "Şifresiz Öğrenci", ct);
+        Assert.Matches("^[0-9A-Z]{5}-[0-9A-Z]{5}$", code.Code);
+        Assert.Equal(0, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Ogrenci WHERE KurtarmaKodu LIKE N'%' + @code + N'%'", ct, ("@code", code.Code)));
+        await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.RecoverStudentAsync("Şifresiz Öğrenci", "ZZZZZ-ZZZZZ", "Yeni.Sifre1", "Yeni.Sifre1", ct));
+        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Ogrenci WHERE OgrenciID = 4 AND SifreBicimi = 2 AND Sifre = N'' AND KurtarmaKodu IS NOT NULL", ct));
+
+        var student = await recovery.RecoverStudentAsync("şifresiz öğrenci", code.Code.ToLowerInvariant(), "Yeni.Sifre1", "Yeni.Sifre1", ct);
+        Assert.Equal(4, student.UserId);
+        Assert.Equal("Şifresiz Öğrenci", student.DisplayName);
+        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Ogrenci WHERE OgrenciID = 4 AND SifreBicimi = 0 AND Sifre LIKE N'PBKDF2-SHA256$%' AND KurtarmaKodu IS NULL AND KurtarmaBitis IS NULL", ct));
+        await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.RecoverStudentAsync("Şifresiz Öğrenci", code.Code, "Baska.Sifre1", "Baska.Sifre1", ct));
+        Assert.Equal(4, (await auth.SignInStudentAsync("Şifresiz Öğrenci", "Yeni.Sifre1", ct)).UserId);
+        Assert.Equal([4], (await provider.GetRequiredService<IEnrollmentService>().GetMyCoursesAsync(student, ct)).Select(c => c.Id));
+
+        // The founder sets the passwordless teacher's password with the setup key, once.
+        var recovered = await recovery.RecoverTeacherAsync(TestServices.TestSetupKey.Key, "Diğer Öğretmen", "Yeni.Sifre2", "Yeni.Sifre2", ct);
+        Assert.Equal(5, recovered.UserId);
+        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Egitmenler WHERE EgitmenID = 5 AND SifreBicimi = 0 AND Sifre LIKE N'PBKDF2-SHA256$%'", ct));
+        Assert.Equal([4], (await provider.GetRequiredService<ICourseService>().GetTeachingAsync(recovered, ct)).Select(c => c.Id));
+        Assert.Equal(5, (await auth.SignInTeacherAsync("Diğer Öğretmen", "Yeni.Sifre2", ct)).UserId);
+        provider.SetupKey().Reissue();
+        await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.RecoverTeacherAsync(TestServices.TestSetupKey.Key, "Diğer Öğretmen", "Baska.Sifre1", "Baska.Sifre1", ct));
+        await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.RecoverTeacherAsync(TestServices.TestSetupKey.Key, "Eski Öğretmen", "Baska.Sifre1", "Baska.Sifre1", ct));
+        Assert.Equal(1, provider.SetupKey().Consumed);
+        Assert.Equal(2, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Egitmenler", ct));
+        Assert.Equal(3, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Ogrenci", ct));
+    }
+
     [Fact]
     public async Task Initialize_LegacyDatabaseWithConflictingRows_RefusesWithoutChanges()
     {

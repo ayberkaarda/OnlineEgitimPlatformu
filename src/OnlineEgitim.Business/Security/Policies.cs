@@ -8,6 +8,16 @@ public static class LoginPolicy
     public static readonly TimeSpan LockoutDuration = TimeSpan.FromMinutes(15);
 }
 
+/// <summary>Recovery of accounts that have no password.</summary>
+public static class RecoveryPolicy
+{
+    /// <summary>How long a recovery code issued by a teacher works.</summary>
+    public static readonly TimeSpan CodeLifetime = TimeSpan.FromHours(24);
+
+    /// <summary>Characters of a recovery code (50 bits); wrong codes count towards the sign-in lockout.</summary>
+    public const int CodeLength = 10;
+}
+
 /// <summary>Password length rules.</summary>
 public static class PasswordPolicy
 {

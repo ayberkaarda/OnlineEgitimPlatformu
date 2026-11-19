@@ -171,6 +171,106 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
             .ConfigureAwait(false);
     }
 
+    public async Task<StudentRecoveryState?> FindStudentRecoveryAsync(string fullName, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(fullName);
+
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        return await db.Students
+            .AsNoTracking()
+            .Where(s => s.FullName == fullName)
+            .Select(s => new StudentRecoveryState(s.Id, s.FullName, s.PasswordFormat, s.RecoveryCodeHash, s.RecoveryCodeExpires, s.LockoutEnd))
+            .SingleOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<bool> SetRecoveryCodeAsync(int studentId, string codeHash, DateTime expires, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(codeHash);
+
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        var updated = await db.Students
+            .Where(s => s.Id == studentId && s.PasswordFormat == PasswordFormat.None)
+            .ExecuteUpdateAsync(
+                s => s
+                    .SetProperty(a => a.RecoveryCodeHash, codeHash)
+                    .SetProperty(a => a.RecoveryCodeExpires, expires),
+                cancellationToken)
+            .ConfigureAwait(false);
+        return updated == 1;
+    }
+
+    // The WHERE clause is the final decision, as for a sign-in: a code replaced or used since it was
+    // verified, a password set meanwhile, an expiry or a lock make the statement match no row.
+    public async Task<bool> CompleteStudentRecoveryAsync(StudentRecoveryState verified, DateTime now, string newPasswordHash, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(verified);
+        ArgumentNullException.ThrowIfNull(newPasswordHash);
+        if (verified.RecoveryCodeHash is not { } codeHash)
+        {
+            return false;
+        }
+
+        var id = verified.Id;
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        var updated = await db.Students
+            .Where(s => s.Id == id
+                && s.PasswordFormat == PasswordFormat.None
+                && s.RecoveryCodeHash == codeHash
+                && s.RecoveryCodeExpires > now
+                && (s.LockoutEnd == null || s.LockoutEnd <= now))
+            .ExecuteUpdateAsync(
+                s => s
+                    .SetProperty(a => a.PasswordHash, newPasswordHash)
+                    .SetProperty(a => a.PasswordFormat, PasswordFormat.Pbkdf2)
+                    .SetProperty(a => a.RecoveryCodeHash, (string?)null)
+                    .SetProperty(a => a.RecoveryCodeExpires, (DateTime?)null)
+                    .SetProperty(a => a.FailedLoginCount, 0)
+                    .SetProperty(a => a.LockoutEnd, (DateTime?)null),
+                cancellationToken)
+            .ConfigureAwait(false);
+        return updated == 1;
+    }
+
+    public async Task<int?> SetPasswordOfPasswordlessTeacherAsync(string fullName, string newPasswordHash, Func<bool> authorize, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(fullName);
+        ArgumentNullException.ThrowIfNull(newPasswordHash);
+        ArgumentNullException.ThrowIfNull(authorize);
+
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        var id = await db.Teachers
+            .Where(t => t.FullName == fullName && t.PasswordFormat == PasswordFormat.None)
+            .Select(t => (int?)t.Id)
+            .SingleOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (id is null)
+        {
+            return null;
+        }
+
+        // The UPDATE holds the row until the commit, so a concurrent recovery of the same teacher
+        // matches no row and cannot use a second key.
+        var updated = await db.Teachers
+            .Where(t => t.Id == id && t.PasswordFormat == PasswordFormat.None)
+            .ExecuteUpdateAsync(
+                s => s
+                    .SetProperty(a => a.PasswordHash, newPasswordHash)
+                    .SetProperty(a => a.PasswordFormat, PasswordFormat.Pbkdf2)
+                    .SetProperty(a => a.FailedLoginCount, 0)
+                    .SetProperty(a => a.LockoutEnd, (DateTime?)null),
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (updated != 1 || !authorize())
+        {
+            return null;
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return id;
+    }
+
     private static Task<AccountCredentials?> FindAsync<TAccount>(DbSet<TAccount> accounts, string fullName, CancellationToken cancellationToken)
         where TAccount : Account =>
         accounts

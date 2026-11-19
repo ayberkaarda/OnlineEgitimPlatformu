@@ -45,6 +45,15 @@ public enum AuditEvent
 
     /// <summary>A founder operation was refused because the setup key was wrong or already used.</summary>
     SetupRefused = 10,
+
+    /// <summary>A teacher issued a recovery code for a student account without a password.</summary>
+    RecoveryCodeIssued = 11,
+
+    /// <summary>An account without a password got its first password through a verified recovery.</summary>
+    AccountRecovered = 12,
+
+    /// <summary>A recovery was refused (wrong, used or expired code or key, or no such account).</summary>
+    RecoveryFailed = 13,
 }
 
 /// <summary>Receives <see cref="AuditEvent"/>s.</summary>
@@ -68,6 +77,9 @@ public static class AuditCodes
         AuditEvent.Enrolled => "course.enrolled",
         AuditEvent.AccessDenied => "access.denied",
         AuditEvent.SetupRefused => "setup.refused",
+        AuditEvent.RecoveryCodeIssued => "recovery.code.issued",
+        AuditEvent.AccountRecovered => "recovery.completed",
+        AuditEvent.RecoveryFailed => "recovery.failed",
         _ => throw new ArgumentOutOfRangeException(nameof(auditEvent), auditEvent, "Unknown audit event."),
     };
 

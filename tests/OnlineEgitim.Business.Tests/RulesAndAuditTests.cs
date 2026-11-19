@@ -55,6 +55,9 @@ public sealed class AuditTests
         { AuditEvent.Enrolled, 8, "course.enrolled" },
         { AuditEvent.AccessDenied, 9, "access.denied" },
         { AuditEvent.SetupRefused, 10, "setup.refused" },
+        { AuditEvent.RecoveryCodeIssued, 11, "recovery.code.issued" },
+        { AuditEvent.AccountRecovered, 12, "recovery.completed" },
+        { AuditEvent.RecoveryFailed, 13, "recovery.failed" },
     };
 
     [Theory]

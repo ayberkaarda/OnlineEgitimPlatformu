@@ -9,6 +9,15 @@ public sealed record AccountCredentials(
     int FailedLoginCount,
     DateTime? LockoutEnd);
 
+/// <summary>What the recovery of a student account without a password needs to know.</summary>
+public sealed record StudentRecoveryState(
+    int Id,
+    string FullName,
+    PasswordFormat PasswordFormat,
+    string? RecoveryCodeHash,
+    DateTime? RecoveryCodeExpires,
+    DateTime? LockoutEnd);
+
 /// <summary>A course with its teacher, as the lists show it.</summary>
 public sealed record CourseSummary(int Id, string Name, int TeacherId, string TeacherName, string? Topic);
 

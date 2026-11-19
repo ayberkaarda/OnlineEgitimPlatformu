@@ -138,6 +138,15 @@ namespace OnlineEgitim.Data.Persistence.Migrations
                         .HasColumnType("nvarchar(256)")
                         .HasColumnName("Sifre");
 
+                    b.Property<DateTime?>("RecoveryCodeExpires")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("KurtarmaBitis");
+
+                    b.Property<string>("RecoveryCodeHash")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .HasColumnName("KurtarmaKodu");
+
                     b.HasKey("Id")
                         .HasName("PK_Ogrenci");
 

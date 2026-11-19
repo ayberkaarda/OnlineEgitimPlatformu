@@ -113,6 +113,12 @@ namespace OnlineEgitim.UI
 
         private async void btnNotEkle_Click(object? sender, EventArgs e) => await AddNoteAsync();
 
+        private void btnKurtarmaKodu_Click(object? sender, EventArgs e)
+        {
+            using var form = _forms.Create<KurtarmaKoduForm>(_session);
+            form.ShowDialog(this);
+        }
+
         private async void btnYeniKurs_Click(object? sender, EventArgs e)
         {
             int added;

@@ -74,5 +74,17 @@ internal static class SuccessWriteGateExtensions
 
         public Task<TeacherProfile?> GetTeacherAsync(int id, CancellationToken cancellationToken = default) =>
             inner.GetTeacherAsync(id, cancellationToken);
+
+        public Task<StudentRecoveryState?> FindStudentRecoveryAsync(string fullName, CancellationToken cancellationToken = default) =>
+            inner.FindStudentRecoveryAsync(fullName, cancellationToken);
+
+        public Task<bool> SetRecoveryCodeAsync(int studentId, string codeHash, DateTime expires, CancellationToken cancellationToken = default) =>
+            inner.SetRecoveryCodeAsync(studentId, codeHash, expires, cancellationToken);
+
+        public Task<bool> CompleteStudentRecoveryAsync(StudentRecoveryState verified, DateTime now, string newPasswordHash, CancellationToken cancellationToken = default) =>
+            inner.CompleteStudentRecoveryAsync(verified, now, newPasswordHash, cancellationToken);
+
+        public Task<int?> SetPasswordOfPasswordlessTeacherAsync(string fullName, string newPasswordHash, Func<bool> authorize, CancellationToken cancellationToken = default) =>
+            inner.SetPasswordOfPasswordlessTeacherAsync(fullName, newPasswordHash, authorize, cancellationToken);
     }
 }

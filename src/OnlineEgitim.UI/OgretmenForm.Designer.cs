@@ -1,4 +1,4 @@
-﻿namespace OnlineEgitim.UI
+namespace OnlineEgitim.UI
 {
     partial class OgretmenForm
     {
@@ -24,6 +24,7 @@
             this.label1 = new System.Windows.Forms.Label();
             this.label2 = new System.Windows.Forms.Label();
             this.btnYeniKurs = new System.Windows.Forms.Button();
+            this.btnKurtarmaKodu = new System.Windows.Forms.Button();
             this.pictureBox1 = new System.Windows.Forms.PictureBox();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).BeginInit();
             this.SuspendLayout();
@@ -98,6 +99,17 @@
             this.btnYeniKurs.UseVisualStyleBackColor = true;
             this.btnYeniKurs.Click += new System.EventHandler(this.btnYeniKurs_Click);
             // 
+            // btnKurtarmaKodu
+            // 
+            this.btnKurtarmaKodu.Location = new System.Drawing.Point(176, 305);
+            this.btnKurtarmaKodu.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
+            this.btnKurtarmaKodu.Name = "btnKurtarmaKodu";
+            this.btnKurtarmaKodu.Size = new System.Drawing.Size(170, 37);
+            this.btnKurtarmaKodu.TabIndex = 9;
+            this.btnKurtarmaKodu.Text = "Kurtarma Kodu Üret";
+            this.btnKurtarmaKodu.UseVisualStyleBackColor = true;
+            this.btnKurtarmaKodu.Click += new System.EventHandler(this.btnKurtarmaKodu_Click);
+            // 
             // pictureBox1
             // 
             this.pictureBox1.Location = new System.Drawing.Point(504, 305);
@@ -113,6 +125,7 @@
             this.BackColor = System.Drawing.SystemColors.ActiveCaption;
             this.ClientSize = new System.Drawing.Size(820, 488);
             this.Controls.Add(this.pictureBox1);
+            this.Controls.Add(this.btnKurtarmaKodu);
             this.Controls.Add(this.btnYeniKurs);
             this.Controls.Add(this.label2);
             this.Controls.Add(this.label1);
@@ -137,6 +150,7 @@
         private System.Windows.Forms.ListBox lstKayitliOgrenciler;
         private System.Windows.Forms.Label label1;
         private System.Windows.Forms.Label label2;
+        private System.Windows.Forms.Button btnKurtarmaKodu;
         private System.Windows.Forms.Button btnYeniKurs; // Yeni buton tanımlandı
         private System.Windows.Forms.PictureBox pictureBox1;
     }

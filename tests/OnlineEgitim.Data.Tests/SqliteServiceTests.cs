@@ -301,6 +301,37 @@ public sealed class SqliteServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Recovery_ExpiredOrReplacedCode_IsRefused()
+    {
+        await using (var context = _db.CreateContext())
+        {
+            context.Students.Add(new Student { FullName = "Kodsuz Öğrenci", Email = "kodsuz@example.com", PasswordHash = string.Empty, PasswordFormat = PasswordFormat.None });
+            await context.SaveChangesAsync(Ct);
+        }
+
+        var recovery = _db.Get<IRecoveryService>();
+        var hasPassword = await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.IssueStudentCodeAsync(Teacher(DenizId), "Mert Deneme", Ct));
+        Assert.Equal(RecoveryService.NoPasswordlessStudent, hasPassword.Message);
+
+        var expiring = await recovery.IssueStudentCodeAsync(Teacher(DenizId), "Kodsuz Öğrenci", Ct);
+        Assert.Equal(_db.Clock.GetUtcNow().UtcDateTime + Business.Security.RecoveryPolicy.CodeLifetime, expiring.ExpiresUtc);
+        _db.Clock.Advance(Business.Security.RecoveryPolicy.CodeLifetime);
+        var expired = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => recovery.RecoverStudentAsync("Kodsuz Öğrenci", expiring.Code, "Yeni.Sifre1", "Yeni.Sifre1", Ct));
+        Assert.Equal(RecoveryService.StudentRecoveryFailed, expired.Message);
+
+        var first = await recovery.IssueStudentCodeAsync(Teacher(DenizId), "Kodsuz Öğrenci", Ct);
+        var second = await recovery.IssueStudentCodeAsync(Teacher(EceId), "Kodsuz Öğrenci", Ct);
+        await Assert.ThrowsAsync<BusinessRuleException>(
+            () => recovery.RecoverStudentAsync("Kodsuz Öğrenci", first.Code, "Yeni.Sifre1", "Yeni.Sifre1", Ct));
+        var session = await recovery.RecoverStudentAsync("Kodsuz Öğrenci", second.Code, "Yeni.Sifre1", "Yeni.Sifre1", Ct);
+
+        Assert.True(session.IsStudent);
+        Assert.Equal(session.UserId, (await Auth.SignInStudentAsync("Kodsuz Öğrenci", "Yeni.Sifre1", Ct)).UserId);
+        await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.IssueStudentCodeAsync(Teacher(DenizId), "Kodsuz Öğrenci", Ct));
+    }
+
+    [Fact]
     public async Task Setup_IsNotOfferedOnceATeacherExists()
     {
         var setup = _db.Get<ISetupService>();

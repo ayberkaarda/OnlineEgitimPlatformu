@@ -54,6 +54,34 @@ public interface IAccountRepository
     Task<FirstTeacherResult> AddFirstTeacherAsync(Teacher teacher, Func<bool> authorize, CancellationToken cancellationToken = default);
 
     Task<TeacherProfile?> GetTeacherAsync(int id, CancellationToken cancellationToken = default);
+
+    /// <summary>The recovery state of the student who signs in with <paramref name="fullName"/>.</summary>
+    Task<StudentRecoveryState?> FindStudentRecoveryAsync(string fullName, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Stores a recovery code hash for student <paramref name="studentId"/>, replacing an earlier one,
+    /// only while the account has no password (<see cref="PasswordFormat.None"/>).
+    /// </summary>
+    /// <returns><see langword="false"/> when the account does not exist or has a password.</returns>
+    Task<bool> SetRecoveryCodeAsync(int studentId, string codeHash, DateTime expires, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gives the student of <paramref name="verified"/> its first password in one conditional UPDATE:
+    /// only while the account still has no password, the verified code and an unexpired code at
+    /// <paramref name="now"/>, and is not locked. The PBKDF2 hash and its format are written together
+    /// and the code is removed, so it works once.
+    /// </summary>
+    /// <returns><see langword="false"/> when nothing was written.</returns>
+    Task<bool> CompleteStudentRecoveryAsync(StudentRecoveryState verified, DateTime now, string newPasswordHash, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gives the teacher who signs in with <paramref name="fullName"/> and has no password its first
+    /// password (a PBKDF2 hash, written together with its format). <paramref name="authorize"/> is the
+    /// final decision: it is called inside the transaction after the account was matched and nothing
+    /// is written when it returns <see langword="false"/>.
+    /// </summary>
+    /// <returns>The teacher's id, or <see langword="null"/> when nothing was written.</returns>
+    Task<int?> SetPasswordOfPasswordlessTeacherAsync(string fullName, string newPasswordHash, Func<bool> authorize, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Outcome of <see cref="IAccountRepository.AddFirstTeacherAsync"/>.</summary>

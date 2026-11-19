@@ -28,6 +28,7 @@ namespace OnlineEgitim.UI
             this.pictureBox1 = new System.Windows.Forms.PictureBox();
             this.txtSifre = new System.Windows.Forms.TextBox();
             this.lnkKurulum = new System.Windows.Forms.LinkLabel();
+            this.lnkKurtarma = new System.Windows.Forms.LinkLabel();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox2)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).BeginInit();
             this.SuspendLayout();
@@ -120,7 +121,7 @@ namespace OnlineEgitim.UI
             this.pictureBox1.Location = new System.Drawing.Point(340, 0);
             this.pictureBox1.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
             this.pictureBox1.Name = "pictureBox1";
-            this.pictureBox1.Size = new System.Drawing.Size(371, 400);
+            this.pictureBox1.Size = new System.Drawing.Size(371, 424);
             this.pictureBox1.SizeMode = System.Windows.Forms.PictureBoxSizeMode.StretchImage;
             this.pictureBox1.TabIndex = 7;
             this.pictureBox1.TabStop = false;
@@ -137,21 +138,34 @@ namespace OnlineEgitim.UI
             // 
             this.lnkKurulum.AutoSize = true;
             this.lnkKurulum.BackColor = System.Drawing.Color.Transparent;
-            this.lnkKurulum.Location = new System.Drawing.Point(17, 372);
+            this.lnkKurulum.Location = new System.Drawing.Point(17, 396);
             this.lnkKurulum.Name = "lnkKurulum";
             this.lnkKurulum.Size = new System.Drawing.Size(232, 16);
-            this.lnkKurulum.TabIndex = 11;
+            this.lnkKurulum.TabIndex = 12;
             this.lnkKurulum.TabStop = true;
             this.lnkKurulum.Text = "İlk öğretmen kurulumu (kurucu anahtarı)";
             this.lnkKurulum.Visible = false;
             this.lnkKurulum.LinkClicked += new System.Windows.Forms.LinkLabelLinkClickedEventHandler(this.lnkKurulum_LinkClicked);
+            // 
+            // lnkKurtarma
+            // 
+            this.lnkKurtarma.AutoSize = true;
+            this.lnkKurtarma.BackColor = System.Drawing.Color.Transparent;
+            this.lnkKurtarma.Location = new System.Drawing.Point(17, 372);
+            this.lnkKurtarma.Name = "lnkKurtarma";
+            this.lnkKurtarma.Size = new System.Drawing.Size(150, 16);
+            this.lnkKurtarma.TabIndex = 11;
+            this.lnkKurtarma.TabStop = true;
+            this.lnkKurtarma.Text = "Şifresiz hesabı kurtar";
+            this.lnkKurtarma.LinkClicked += new System.Windows.Forms.LinkLabelLinkClickedEventHandler(this.lnkKurtarma_LinkClicked);
             // 
             // GirisForm
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.SystemColors.ActiveCaption;
-            this.ClientSize = new System.Drawing.Size(709, 400);
+            this.ClientSize = new System.Drawing.Size(709, 424);
+            this.Controls.Add(this.lnkKurtarma);
             this.Controls.Add(this.lnkKurulum);
             this.Controls.Add(this.txtSifre);
             this.Controls.Add(this.pictureBox2);
@@ -190,5 +204,6 @@ namespace OnlineEgitim.UI
         private System.Windows.Forms.PictureBox pictureBox2;
         private System.Windows.Forms.TextBox txtSifre;
         private System.Windows.Forms.LinkLabel lnkKurulum;
+        private System.Windows.Forms.LinkLabel lnkKurtarma;
     }
 }

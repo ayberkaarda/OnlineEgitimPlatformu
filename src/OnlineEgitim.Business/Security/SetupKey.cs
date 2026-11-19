@@ -89,7 +89,7 @@ public sealed class FileSetupKeyStore : ISetupKeyStore
 
             stream.SetLength(0);
             using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-            writer.WriteLine(NewKey());
+            writer.WriteLine(NewCode(KeyLength));
         }
         catch (IOException) when (File.Exists(KeyFilePath))
         {
@@ -123,10 +123,11 @@ public sealed class FileSetupKeyStore : ISetupKeyStore
         return builder.ToString();
     }
 
-    private static string NewKey()
+    /// <summary>A random code of <paramref name="length"/> base32 characters in groups of five.</summary>
+    internal static string NewCode(int length)
     {
-        var builder = new StringBuilder(KeyLength + (KeyLength / 5));
-        for (var i = 0; i < KeyLength; i++)
+        var builder = new StringBuilder(length + (length / 5));
+        for (var i = 0; i < length; i++)
         {
             if (i > 0 && i % 5 == 0)
             {

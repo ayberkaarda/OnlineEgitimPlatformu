@@ -19,6 +19,7 @@ public static class BusinessServiceCollectionExtensions
         services.TryAddSingleton<ISetupKeyStore>(_ => FileSetupKeyStore.CreateDefault());
         services.AddSingleton<IAuthService, AuthService>();
         services.AddSingleton<ISetupService, SetupService>();
+        services.AddSingleton<IRecoveryService, RecoveryService>();
         services.AddSingleton<ICourseService, CourseService>();
         services.AddSingleton<IEnrollmentService, EnrollmentService>();
         return services;

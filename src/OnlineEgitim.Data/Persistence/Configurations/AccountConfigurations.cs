@@ -19,6 +19,8 @@ internal sealed class StudentConfiguration : IEntityTypeConfiguration<Student>
         builder.Property(s => s.FullName).HasColumnName("Isim").HasMaxLength(SchemaLimits.PersonNameLength).IsRequired();
         builder.Property(s => s.Email).HasColumnName("Email").HasMaxLength(SchemaLimits.EmailLength).IsRequired();
         AccountColumns.Configure(builder);
+        builder.Property(s => s.RecoveryCodeHash).HasColumnName("KurtarmaKodu").HasMaxLength(SchemaLimits.PasswordLength);
+        builder.Property(s => s.RecoveryCodeExpires).HasColumnName("KurtarmaBitis");
 
         // Students sign in with their name and register with a unique e-mail address, so both are unique.
         builder.HasIndex(s => s.FullName, "IX_Ogrenci_Isim").IsUnique();

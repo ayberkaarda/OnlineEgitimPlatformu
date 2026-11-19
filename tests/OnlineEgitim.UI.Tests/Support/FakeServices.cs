@@ -145,7 +145,13 @@ internal sealed class PendingSetupService : ISetupService
 
     public Task<bool> IsTeacherMissingAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
 
-    public string? IssueSetupKey() => KeyFilePath;
+    public int KeyRequests { get; private set; }
+
+    public string? IssueSetupKey()
+    {
+        KeyRequests++;
+        return KeyFilePath;
+    }
 
     public Task<UserSession> CreateFirstTeacherAsync(
         string? setupKey,
@@ -162,6 +168,40 @@ internal sealed class PendingSetupService : ISetupService
     }
 
     public void Refuse() => _create.SetException(new BusinessRuleException("Şifreler uyuşmuyor."));
+}
+
+/// <summary>Recovery calls stay pending until the test completes them; the arguments are recorded.</summary>
+internal sealed class PendingRecoveryService : IRecoveryService
+{
+    private TaskCompletionSource<RecoveryCode> _issue = new();
+    private TaskCompletionSource<UserSession> _recover = new();
+
+    public List<string> Calls { get; } = [];
+
+    public Task<RecoveryCode> IssueStudentCodeAsync(UserSession teacher, string? studentName, CancellationToken cancellationToken = default)
+    {
+        Calls.Add("issue:" + studentName);
+        _issue = new TaskCompletionSource<RecoveryCode>();
+        return _issue.Task;
+    }
+
+    public Task<UserSession> RecoverStudentAsync(string? fullName, string? code, string? password, string? passwordRepeat, CancellationToken cancellationToken = default)
+    {
+        Calls.Add("student:" + fullName + "/" + code);
+        _recover = new TaskCompletionSource<UserSession>();
+        return _recover.Task;
+    }
+
+    public Task<UserSession> RecoverTeacherAsync(string? setupKey, string? fullName, string? password, string? passwordRepeat, CancellationToken cancellationToken = default)
+    {
+        Calls.Add("teacher:" + fullName + "/" + setupKey);
+        _recover = new TaskCompletionSource<UserSession>();
+        return _recover.Task;
+    }
+
+    public void CompleteIssue(string code) => _issue.SetResult(new RecoveryCode(code, new DateTime(2026, 3, 3, 10, 0, 0, DateTimeKind.Utc)));
+
+    public void RefuseRecovery() => _recover.SetException(new BusinessRuleException("Kurtarma başarısız."));
 }
 
 /// <summary>Answers confirmations with yes and records every message instead of showing a dialog.</summary>

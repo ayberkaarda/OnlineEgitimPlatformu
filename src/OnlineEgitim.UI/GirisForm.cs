@@ -88,7 +88,8 @@ namespace OnlineEgitim.UI
                 btnOgrenciGiris,
                 btnOgretmenGiris,
                 button1,
-                lnkKurulum);
+                lnkKurulum,
+                lnkKurtarma);
             return session;
         }
 
@@ -127,6 +128,20 @@ namespace OnlineEgitim.UI
 
             using var setup = _forms.Create<IlkKurulumForm>();
             if (setup.ShowDialog(this) == DialogResult.OK && setup.Session is { } session)
+            {
+                Complete(session);
+            }
+        }
+
+        private void lnkKurtarma_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e)
+        {
+            if (_signIn.IsRunning)
+            {
+                return;
+            }
+
+            using var recovery = _forms.Create<HesapKurtarmaForm>();
+            if (recovery.ShowDialog(this) == DialogResult.OK && recovery.Session is { } session)
             {
                 Complete(session);
             }
