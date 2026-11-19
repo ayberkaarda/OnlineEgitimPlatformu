@@ -156,7 +156,8 @@ internal static class LegacySchemaUpgrader
         var count = await CountExistingLegacyTablesAsync(db, cancellationToken).ConfigureAwait(false);
         if (count != LegacyTables.Length)
         {
-            throw new InvalidOperationException(
+            throw new LegacyUpgradeRefusedException(
+                [new LegacyUpgradeIssue(LegacyUpgradeProblem.PartialSchema, LegacyTables.Length - count)],
                 "The database contains only part of the course schema (Ogrenci, Egitmenler, Dersler, Notlar and "
                 + "OgrenciKurslar keyed by OgrenciID and DersID) and no migration history, so it cannot be upgraded automatically.");
         }
@@ -180,7 +181,10 @@ internal static class LegacySchemaUpgrader
             db,
             "SELECT COUNT(*) AS [Value] FROM (SELECT OgrenciID, DersID FROM dbo.OgrenciKurslar GROUP BY OgrenciID, DersID HAVING COUNT(*) > 1) d",
             cancellationToken).ConfigureAwait(false);
-        throw new InvalidOperationException(string.Create(
+        IReadOnlyList<LegacyUpgradeIssue> issues = duplicates > 0
+            ? [new(LegacyUpgradeProblem.EnrollmentKeyColumns, keyColumns), new(LegacyUpgradeProblem.DuplicateEnrollments, duplicates)]
+            : [new(LegacyUpgradeProblem.EnrollmentKeyColumns, keyColumns)];
+        throw new LegacyUpgradeRefusedException(issues, string.Create(
             CultureInfo.InvariantCulture,
             $"The enrollments of the existing course database are not keyed by exactly OgrenciID and DersID "
             + $"({keyColumns} enrollment key columns, {studentAndCourse} of them OgrenciID or DersID; "
@@ -202,44 +206,53 @@ internal static class LegacySchemaUpgrader
     /// </summary>
     private static async Task ValidateDataAsync(EgitimDbContext db, CancellationToken cancellationToken)
     {
-        (string Sql, string Problem)[] checks =
+        (string Sql, LegacyUpgradeProblem Kind, string Problem)[] checks =
         [
             (
                 $"SELECT COUNT(*) AS [Value] FROM dbo.Egitmenler WHERE {Unclear("AdSoyad")} OR UzmanlikAlani IS NULL",
+                LegacyUpgradeProblem.UnclearTeacherIdentities,
                 "teachers with a missing, padded or multi-line sign-in name or a missing specialty"),
             (
                 "SELECT COUNT(*) AS [Value] FROM (SELECT AdSoyad FROM dbo.Egitmenler GROUP BY AdSoyad HAVING COUNT(*) > 1) d",
+                LegacyUpgradeProblem.DuplicateTeacherNames,
                 "teacher sign-in names shared by more than one teacher"),
             (
                 $"SELECT COUNT(*) AS [Value] FROM dbo.Ogrenci WHERE {Unclear("Isim")} OR {Unclear("Email")}",
+                LegacyUpgradeProblem.UnclearStudentIdentities,
                 "students with a missing, padded or multi-line sign-in name or e-mail address"),
             (
                 "SELECT COUNT(*) AS [Value] FROM (SELECT Isim FROM dbo.Ogrenci GROUP BY Isim HAVING COUNT(*) > 1) d",
+                LegacyUpgradeProblem.DuplicateStudentNames,
                 "student sign-in names shared by more than one student"),
             (
                 "SELECT COUNT(*) AS [Value] FROM (SELECT Email FROM dbo.Ogrenci GROUP BY Email HAVING COUNT(*) > 1) d",
+                LegacyUpgradeProblem.DuplicateStudentEmails,
                 "e-mail addresses shared by more than one student"),
             (
                 """
                 SELECT COUNT(*) AS [Value] FROM dbo.Dersler d
                 WHERE d.DersAdi IS NULL OR NOT EXISTS (SELECT 1 FROM dbo.Egitmenler e WHERE e.EgitmenID = d.EgitmenID)
                 """,
+                LegacyUpgradeProblem.InvalidCourses,
                 "courses without a name or without an existing teacher"),
         ];
 
         var problems = new List<string>();
-        foreach (var (sql, problem) in checks)
+        var issues = new List<LegacyUpgradeIssue>();
+        foreach (var (sql, kind, problem) in checks)
         {
             var count = await ScalarAsync(db, sql, cancellationToken).ConfigureAwait(false);
             if (count > 0)
             {
                 problems.Add($"{count} {problem}");
+                issues.Add(new LegacyUpgradeIssue(kind, count));
             }
         }
 
         if (problems.Count > 0)
         {
-            throw new InvalidOperationException(
+            throw new LegacyUpgradeRefusedException(
+                issues,
                 "The existing course database cannot be upgraded until these rows are corrected: "
                 + string.Join("; ", problems) + ". No changes were made.");
         }

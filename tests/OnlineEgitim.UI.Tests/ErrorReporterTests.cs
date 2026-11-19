@@ -42,6 +42,38 @@ public sealed class ErrorReporterTests
         Assert.StartsWith("Veritabanı hazırlanamadı.", message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A refused legacy upgrade names its fixed problem kinds and counts to the operator, on screen and
+    /// in the log; the exception message and row contents stay out of both.
+    /// </summary>
+    [Fact]
+    public void LegacyConflict_ShowsSafeReasonWithoutPersonalData()
+    {
+        var refused = new Data.Persistence.LegacyUpgradeRefusedException(
+            [
+                new(Data.Persistence.LegacyUpgradeProblem.DuplicateStudentNames, 2),
+                new(Data.Persistence.LegacyUpgradeProblem.DuplicateStudentEmails, 1),
+            ],
+            "Ayşe Gizli ayse@example.com Sifre=abcd");
+        var exception = new Data.Persistence.DatabaseInitializationException(refused);
+
+        var message = ErrorReporter.Describe(exception);
+        var log = ErrorReporter.FormatForLog(exception);
+
+        Assert.StartsWith("Eski veritabanı yükseltilmedi", message, StringComparison.Ordinal);
+        Assert.Contains("2 öğrenci adı birden fazla öğrencide kullanılıyor", message, StringComparison.Ordinal);
+        Assert.Contains("1 e-posta adresi birden fazla öğrencide kullanılıyor", message, StringComparison.Ordinal);
+        Assert.Contains("Hiçbir değişiklik yapılmadı", message, StringComparison.Ordinal);
+        Assert.Contains("legacy_upgrade.student_name_duplicate=2", log, StringComparison.Ordinal);
+        Assert.Contains("legacy_upgrade.student_email_duplicate=1", log, StringComparison.Ordinal);
+        foreach (var text in new[] { message, log })
+        {
+            Assert.DoesNotContain("Ayşe", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("example.com", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("abcd", text, StringComparison.Ordinal);
+        }
+    }
+
     private static InvalidOperationException Capture()
     {
         try

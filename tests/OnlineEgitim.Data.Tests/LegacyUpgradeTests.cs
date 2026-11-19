@@ -156,6 +156,14 @@ public sealed class LegacyUpgradeTests
         Assert.Contains("1 e-mail addresses shared by more than one student", message, StringComparison.Ordinal);
         Assert.DoesNotContain("Gizli", message, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("example.com", message, StringComparison.Ordinal);
+        var refused = Assert.IsType<LegacyUpgradeRefusedException>(error.InnerException);
+        Assert.Equal(
+            [
+                new LegacyUpgradeIssue(LegacyUpgradeProblem.UnclearStudentIdentities, 1),
+                new LegacyUpgradeIssue(LegacyUpgradeProblem.DuplicateStudentNames, 1),
+                new LegacyUpgradeIssue(LegacyUpgradeProblem.DuplicateStudentEmails, 1),
+            ],
+            refused.Issues);
         await AssertUnchangedAsync(database, ct);
     }
 
@@ -227,6 +235,12 @@ public sealed class LegacyUpgradeTests
         Assert.Contains("1 student and course pairs enrolled more than once", message, StringComparison.Ordinal);
         Assert.Contains("No changes were made", message, StringComparison.Ordinal);
         Assert.DoesNotContain("Eski", message, StringComparison.Ordinal);
+        Assert.Equal(
+            [
+                new LegacyUpgradeIssue(LegacyUpgradeProblem.EnrollmentKeyColumns, 3),
+                new LegacyUpgradeIssue(LegacyUpgradeProblem.DuplicateEnrollments, 1),
+            ],
+            Assert.IsType<LegacyUpgradeRefusedException>(error.InnerException).Issues);
         await AssertUnchangedAsync(database, ct);
         Assert.Equal(3, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.OgrenciKurslar", ct));
         Assert.Equal(3, await database.ScalarAsync(
