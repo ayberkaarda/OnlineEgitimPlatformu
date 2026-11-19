@@ -111,6 +111,22 @@ public abstract class AppDialog : Form, IStatusSurface
 
     void IStatusSurface.ClearStatus() => ClearStatus();
 
+    /// <summary>Renames the screen: the window title and the header, for a screen that serves two purposes.</summary>
+    private protected void SetTitle(string title, string subtitle, string glyph)
+    {
+        Text = AppText.Title + " - " + title;
+        if (Header is not null)
+        {
+            Header.Controls["headerTitle"]!.Text = title;
+            Header.Controls["headerSubtitle"]!.Text = subtitle;
+            if (Header.Controls["headerBadge"] is GlyphBadge badge)
+            {
+                badge.Glyph = glyph;
+                badge.Invalidate();
+            }
+        }
+    }
+
     /// <summary>A short hint on the left of the footer.</summary>
     private protected void SetFooterNote(string text) => _footerNote.Text = text;
 

@@ -57,6 +57,7 @@ internal sealed record CourseItem(CourseSummary Course, CourseItemStyle Style, b
     private string SeatStatus => Course.Capacity switch
     {
         null => "Sınırsız",
+        0 when Course.StudentCount == 0 => "Kapalı",
         _ when !Course.HasFreeSeat => "Dolu",
         { } capacity => string.Create(CultureInfo.CurrentCulture, $"{capacity - Course.StudentCount} boş yer"),
     };
