@@ -77,6 +77,30 @@ internal sealed class SqlServerTestDatabase : IAsyncDisposable
         return services.BuildServiceProvider();
     }
 
+    /// <summary>
+    /// The application's services with a command timeout of <paramref name="seconds"/>, shorter than the
+    /// application locks wait, to show that a lock wait never ends as a command timeout.
+    /// </summary>
+    public ServiceProvider BuildServicesWithCommandTimeout(int seconds) =>
+        BuildServices(configureContext: builder => builder.UseSqlServer(ConnectionString, sql => sql.CommandTimeout(seconds)));
+
+    /// <summary>
+    /// Takes the application lock <paramref name="resource"/> on a connection of its own, as another
+    /// application instance in the middle of an operation would, and keeps it until the returned
+    /// connection is disposed.
+    /// </summary>
+    public async Task<SqlConnection> HoldAppLockAsync(string resource, CancellationToken ct)
+    {
+        var connection = new SqlConnection(new SqlConnectionStringBuilder(ConnectionString) { Pooling = false }.ConnectionString);
+        await connection.OpenAsync(ct);
+        await using var command = new SqlCommand(
+            "DECLARE @result int; EXEC @result = sp_getapplock @Resource = @resource, @LockMode = 'Exclusive', @LockOwner = 'Session', @LockTimeout = 0; SELECT @result;",
+            connection);
+        command.Parameters.AddWithValue("@resource", resource);
+        Assert.Equal(0, Convert.ToInt32(await command.ExecuteScalarAsync(ct), CultureInfo.InvariantCulture));
+        return connection;
+    }
+
     public Task ExecuteAsync(string sql, CancellationToken ct, params (string Name, object Value)[] parameters) =>
         ExecuteAsync(ConnectionString, sql, ct, parameters);
 
