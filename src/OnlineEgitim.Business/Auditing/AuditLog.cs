@@ -54,6 +54,9 @@ public enum AuditEvent
 
     /// <summary>A recovery was refused (wrong, used or expired code or key, or no such account).</summary>
     RecoveryFailed = 13,
+
+    /// <summary>A registration used a name or e-mail address that is taken; no account was created.</summary>
+    RegistrationNotCompleted = 14,
 }
 
 /// <summary>Receives <see cref="AuditEvent"/>s.</summary>
@@ -80,6 +83,7 @@ public static class AuditCodes
         AuditEvent.RecoveryCodeIssued => "recovery.code.issued",
         AuditEvent.AccountRecovered => "recovery.completed",
         AuditEvent.RecoveryFailed => "recovery.failed",
+        AuditEvent.RegistrationNotCompleted => "auth.student.registration_not_completed",
         _ => throw new ArgumentOutOfRangeException(nameof(auditEvent), auditEvent, "Unknown audit event."),
     };
 

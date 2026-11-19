@@ -8,6 +8,15 @@ namespace OnlineEgitim.UI
     /// <summary>Student registration.</summary>
     public partial class KayitForm : Form
     {
+        /// <summary>
+        /// The one answer to every accepted registration: a new account and a taken name or e-mail
+        /// address look the same, so the form does not tell whether someone is registered.
+        /// </summary>
+        internal const string RegistrationReceived =
+            "Kayıt isteğiniz işlendi. Ad ve e-posta adresiniz daha önce kullanılmadıysa hesabınız oluşturuldu; "
+            + "seçtiğiniz şifreyle giriş yapabilirsiniz. Giriş yapamıyorsanız bu ad veya e-posta adresi başka bir hesapta "
+            + "kullanılıyor olabilir; farklı bilgilerle yeniden kayıt olun.";
+
         private readonly IAuthService _auth;
         private readonly ExclusiveOperation _save = new();
 
@@ -47,7 +56,7 @@ namespace OnlineEgitim.UI
                         txtSifre.Clear();
                     }
 
-                    Prompts.Inform("Kayıt başarıyla tamamlandı!");
+                    Prompts.Inform(RegistrationReceived);
                     txtAd.Clear();
                     txtMail.Clear();
                     _save.FocusAfterUnlock(txtAd);

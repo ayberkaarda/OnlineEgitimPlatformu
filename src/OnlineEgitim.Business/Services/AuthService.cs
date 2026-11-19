@@ -18,7 +18,12 @@ public interface IAuthService
     /// <exception cref="BusinessRuleException">Wrong credentials, missing input or a locked account.</exception>
     Task<UserSession> SignInTeacherAsync(string? fullName, string? password, CancellationToken cancellationToken = default);
 
-    /// <summary>Registers a new student. The password is stored as a hash.</summary>
+    /// <summary>
+    /// Registers a new student; the password is stored as a hash. A name or e-mail address that is
+    /// already registered ends the same way as a new registration (without a new account or any change
+    /// to the existing one), so registration does not tell whether someone has an account. Only invalid
+    /// input is refused.
+    /// </summary>
     Task RegisterStudentAsync(string? fullName, string? email, string? password, CancellationToken cancellationToken = default);
 }
 
@@ -31,10 +36,6 @@ internal sealed class AuthService(
     internal const string InputRequired = "Lütfen tüm alanları doldurun.";
     internal const string RegisterFieldsRequired = "Lütfen tüm alanları doldurunuz.";
     internal const string EmailInvalid = "Lütfen geçerli bir e-posta adresi girin.";
-
-    // Name and e-mail conflicts share one answer, so registration cannot tell which of another
-    // person's details is already in use.
-    internal const string AccountTaken = "Bu ad veya e-posta adresiyle kayıt oluşturulamıyor. Lütfen farklı bilgiler deneyin.";
 
     internal static readonly string NameInvalid = string.Create(
         CultureInfo.InvariantCulture,
@@ -84,11 +85,7 @@ internal sealed class AuthService(
             throw new BusinessRuleException(PasswordInvalid);
         }
 
-        if (await accounts.StudentExistsAsync(name, mail, cancellationToken).ConfigureAwait(false))
-        {
-            throw new BusinessRuleException(AccountTaken);
-        }
-
+        // Derived before the check, so a taken name or address costs as much as a new account.
         var student = new Student
         {
             FullName = name,
@@ -97,14 +94,21 @@ internal sealed class AuthService(
             PasswordFormat = PasswordFormat.Pbkdf2,
         };
 
+        if (await accounts.StudentExistsAsync(name, mail, cancellationToken).ConfigureAwait(false))
+        {
+            audit.Record(AuditEvent.RegistrationNotCompleted, AccountRole.Student);
+            return;
+        }
+
         try
         {
             await accounts.AddStudentAsync(student, cancellationToken).ConfigureAwait(false);
         }
-        catch (DuplicateAccountException ex)
+        catch (DuplicateAccountException)
         {
-            // Registered concurrently between the check and the insert.
-            throw new BusinessRuleException(AccountTaken, ex);
+            // Registered concurrently between the check and the insert: the same outcome as a taken one.
+            audit.Record(AuditEvent.RegistrationNotCompleted, AccountRole.Student);
+            return;
         }
 
         audit.Record(AuditEvent.StudentRegistered, AccountRole.Student);

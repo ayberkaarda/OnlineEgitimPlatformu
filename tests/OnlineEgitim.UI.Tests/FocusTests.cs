@@ -80,7 +80,18 @@ public sealed class FocusTests
         Assert.Empty(name.Text);
         Assert.Empty(Find<TextBox>(form, "txtSifre").Text);
         Assert.Same(name, form.ActiveControl);
-        Assert.Equal(["Kayıt başarıyla tamamlandı!"], prompts.Messages);
+        Assert.Equal([KayitForm.RegistrationReceived], prompts.Messages);
+    });
+
+    /// <summary>
+    /// The form has one public answer for every accepted registration; it must not announce a new
+    /// account, which a taken name would not get.
+    /// </summary>
+    [Fact]
+    public void Registration_PublicAnswer_DoesNotClaimANewAccount() => Run(() =>
+    {
+        Assert.DoesNotContain("başarıyla", KayitForm.RegistrationReceived, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("başka bir hesapta", KayitForm.RegistrationReceived, StringComparison.Ordinal);
     });
 
     [Fact]

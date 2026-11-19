@@ -58,6 +58,7 @@ public sealed class AuditTests
         { AuditEvent.RecoveryCodeIssued, 11, "recovery.code.issued" },
         { AuditEvent.AccountRecovered, 12, "recovery.completed" },
         { AuditEvent.RecoveryFailed, 13, "recovery.failed" },
+        { AuditEvent.RegistrationNotCompleted, 14, "auth.student.registration_not_completed" },
     };
 
     [Theory]

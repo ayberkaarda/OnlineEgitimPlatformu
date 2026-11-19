@@ -152,10 +152,50 @@ public sealed class AuthServiceTests
         _accounts.Setup(a => a.StudentExistsAsync("Ayşe Yılmaz", "ayse@example.com", It.IsAny<CancellationToken>())).ReturnsAsync(false);
         _accounts.Setup(a => a.AddStudentAsync(It.IsAny<Student>(), It.IsAny<CancellationToken>())).ThrowsAsync(new DuplicateAccountException());
 
-        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service.RegisterStudentAsync("Ayşe Yılmaz", "ayse@example.com", "Gizli.Sifre1", Ct));
+        await Service.RegisterStudentAsync("Ayşe Yılmaz", "ayse@example.com", "Gizli.Sifre1", Ct);
 
-        Assert.Equal(AuthService.AccountTaken, error.Message);
-        Assert.Empty(_audit.Events);
+        Assert.Equal([(AuditEvent.RegistrationNotCompleted, (AccountRole?)AccountRole.Student)], _audit.Events);
+    }
+
+    /// <summary>
+    /// With an unused e-mail address, a name that is already registered and one that is not must give
+    /// the same public outcome; otherwise registration tells whether a person has an account. The
+    /// existing account is not touched, and both paths derive a hash.
+    /// </summary>
+    [Fact]
+    public async Task Registration_KnownAndUnknownName_HaveSamePublicOutcome()
+    {
+        var hasher = new CountingHasher(_hasher);
+        var service = new AuthService(_accounts.Object, hasher, _time, _audit);
+        _accounts.Setup(a => a.StudentExistsAsync("Mert Deneme", "yeni@example.com", It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _accounts.Setup(a => a.StudentExistsAsync("Yeni Kişi", "yeni@example.com", It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        _accounts.Setup(a => a.AddStudentAsync(It.Is<Student>(s => s.FullName == "Yeni Kişi"), It.IsAny<CancellationToken>())).ReturnsAsync(9);
+
+        var known = await Record.ExceptionAsync(() => service.RegisterStudentAsync("Mert Deneme", "yeni@example.com", "Gizli.Sifre1", Ct));
+        var hashesForKnown = hasher.Hashes;
+        var unknown = await Record.ExceptionAsync(() => service.RegisterStudentAsync("Yeni Kişi", "yeni@example.com", "Gizli.Sifre1", Ct));
+
+        Assert.Null(known);
+        Assert.Null(unknown);
+        Assert.Equal(1, hashesForKnown);
+        Assert.Equal(2, hasher.Hashes);
+        _accounts.Verify(a => a.AddStudentAsync(It.Is<Student>(s => s.FullName == "Mert Deneme"), It.IsAny<CancellationToken>()), Times.Never);
+        _accounts.Verify(a => a.AddStudentAsync(It.IsAny<Student>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    private sealed class CountingHasher(IPasswordHasher inner) : IPasswordHasher
+    {
+        public int Hashes { get; private set; }
+
+        public string Hash(string password)
+        {
+            Hashes++;
+            return inner.Hash(password);
+        }
+
+        public PasswordVerificationResult Verify(string password, string stored, PasswordFormat format) => inner.Verify(password, stored, format);
+
+        public void SimulateVerification(string password) => inner.SimulateVerification(password);
     }
 
     [Fact]

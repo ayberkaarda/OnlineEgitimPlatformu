@@ -60,16 +60,20 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         Assert.DoesNotContain("Gizli.Sifre1", stored.PasswordHash, StringComparison.Ordinal);
     }
 
-    /// <summary>A taken name and a taken e-mail address get one answer, so neither can be probed.</summary>
+    /// <summary>
+    /// A taken name or e-mail address gives the same outcome as a new registration, so neither can be
+    /// probed; no row is added and the existing account keeps its password.
+    /// </summary>
     [Fact]
     public async Task RegisterStudent_TakenNameOrEmail_SameAnswerAndNoNewRow()
     {
-        var name = await Assert.ThrowsAsync<BusinessRuleException>(() => Auth.RegisterStudentAsync("Mert Deneme", "yeni@example.com", "Gizli.Sifre1", Ct));
-        var email = await Assert.ThrowsAsync<BusinessRuleException>(() => Auth.RegisterStudentAsync("Yeni Kişi", "selin@example.com", "Gizli.Sifre1", Ct));
+        await Auth.RegisterStudentAsync("Mert Deneme", "yeni@example.com", "Baska.Sifre1", Ct);
+        await Auth.RegisterStudentAsync("Yeni Kişi", "selin@example.com", "Baska.Sifre1", Ct);
 
-        Assert.Equal(name.Message, email.Message);
         await using var context = _db.CreateContext();
         Assert.Equal(2, await context.Students.CountAsync(Ct));
+        Assert.Equal(MertId, (await Auth.SignInStudentAsync("Mert Deneme", StudentPassword, Ct)).UserId);
+        await Assert.ThrowsAsync<BusinessRuleException>(() => Auth.SignInStudentAsync("Mert Deneme", "Baska.Sifre1", Ct));
     }
 
     [Fact]
