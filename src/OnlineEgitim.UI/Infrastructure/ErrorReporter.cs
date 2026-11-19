@@ -4,10 +4,14 @@ using System.Globalization;
 using System.Text;
 using OnlineEgitim.Business;
 using OnlineEgitim.Data.Persistence;
+using Serilog;
 
 namespace OnlineEgitim.UI.Infrastructure;
 
-/// <summary>Turns exceptions into short, user friendly Turkish messages.</summary>
+/// <summary>
+/// Turns exceptions into short, user friendly Turkish messages and writes what may be logged about them
+/// (see <see cref="Record"/>) to the log file.
+/// </summary>
 internal static class ErrorReporter
 {
     private const int MaxLoggedExceptions = 8;
@@ -21,6 +25,8 @@ internal static class ErrorReporter
             return;
         }
 
+        Record(Log.Logger, exception);
+
         // Rule and permission messages are fixed texts written for the user; they are shown as warnings.
         if (exception is BusinessRuleException or AccessDeniedException)
         {
@@ -28,8 +34,27 @@ internal static class ErrorReporter
             return;
         }
 
-        Trace.TraceError(FormatForLog(exception));
         Dialogs.Show(owner, Describe(exception), AppText.Title, MessageBoxButtons.OK, MessageBoxIcon.Error);
+    }
+
+    /// <summary>
+    /// Writes <paramref name="exception"/> to <paramref name="logger"/>. A refused operation (a business
+    /// rule or a permission) is a warning with the exception type only: its message is meant for the
+    /// screen, and every refused sign-in gets the same entry whatever the reason. Anything else is an
+    /// error described by <see cref="FormatForLog"/>, without any exception message.
+    /// </summary>
+    public static void Record(ILogger logger, Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(exception);
+
+        if (exception is BusinessRuleException or AccessDeniedException)
+        {
+            logger.Warning("Operation refused: {Type}", exception.GetType().Name);
+            return;
+        }
+
+        logger.Error("Operation failed: {Details}", FormatForLog(exception));
     }
 
     /// <summary>
