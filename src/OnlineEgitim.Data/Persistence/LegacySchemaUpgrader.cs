@@ -146,25 +146,45 @@ internal static class LegacySchemaUpgrader
             "SELECT COUNT(*) AS [Value] FROM sys.tables WHERE schema_id = SCHEMA_ID(N'dbo') AND name IN (N'Ogrenci', N'Egitmenler', N'Dersler', N'Notlar', N'OgrenciKurslar')",
             cancellationToken);
 
-    /// <summary>All five tables must be there, and the enrollments keyed by student and course.</summary>
+    /// <summary>
+    /// All five tables must be there, and the enrollments keyed by exactly the student and the course:
+    /// a key with any other column would let the same student join the same course twice, and the
+    /// upgrade only renames the key, so such a key is refused instead of adopted.
+    /// </summary>
     private static async Task EnsureLegacyShapeAsync(EgitimDbContext db, CancellationToken cancellationToken)
     {
         var count = await CountExistingLegacyTablesAsync(db, cancellationToken).ConfigureAwait(false);
-        var enrollmentKey = await ScalarAsync(
-            db,
-            """
-            SELECT COUNT(*) AS [Value] FROM sys.indexes i
-            JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
-            WHERE i.object_id = OBJECT_ID(N'dbo.OgrenciKurslar') AND i.is_primary_key = 1
-              AND COL_NAME(ic.object_id, ic.column_id) IN (N'OgrenciID', N'DersID')
-            """,
-            cancellationToken).ConfigureAwait(false);
-        if (count != LegacyTables.Length || enrollmentKey != 2)
+        if (count != LegacyTables.Length)
         {
             throw new InvalidOperationException(
                 "The database contains only part of the course schema (Ogrenci, Egitmenler, Dersler, Notlar and "
                 + "OgrenciKurslar keyed by OgrenciID and DersID) and no migration history, so it cannot be upgraded automatically.");
         }
+
+        const string KeyColumns = """
+            FROM sys.indexes i
+            JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+            WHERE i.object_id = OBJECT_ID(N'dbo.OgrenciKurslar') AND i.is_primary_key = 1
+            """;
+        var keyColumns = await ScalarAsync(db, "SELECT COUNT(*) AS [Value] " + KeyColumns, cancellationToken).ConfigureAwait(false);
+        var studentAndCourse = await ScalarAsync(
+            db,
+            "SELECT COUNT(*) AS [Value] " + KeyColumns + " AND COL_NAME(ic.object_id, ic.column_id) IN (N'OgrenciID', N'DersID')",
+            cancellationToken).ConfigureAwait(false);
+        if (keyColumns == 2 && studentAndCourse == 2)
+        {
+            return;
+        }
+
+        var duplicates = await ScalarAsync(
+            db,
+            "SELECT COUNT(*) AS [Value] FROM (SELECT OgrenciID, DersID FROM dbo.OgrenciKurslar GROUP BY OgrenciID, DersID HAVING COUNT(*) > 1) d",
+            cancellationToken).ConfigureAwait(false);
+        throw new InvalidOperationException(string.Create(
+            CultureInfo.InvariantCulture,
+            $"The enrollments of the existing course database are not keyed by exactly OgrenciID and DersID "
+            + $"({keyColumns} enrollment key columns, {studentAndCourse} of them OgrenciID or DersID; "
+            + $"{duplicates} student and course pairs enrolled more than once), so it cannot be upgraded automatically. No changes were made."));
     }
 
     // A value with leading or trailing spaces, or with a tab or line break inside. The original

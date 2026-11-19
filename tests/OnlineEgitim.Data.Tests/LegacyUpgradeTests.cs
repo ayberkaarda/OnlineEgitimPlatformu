@@ -198,6 +198,44 @@ public sealed class LegacyUpgradeTests
             () => provider.GetRequiredService<IAuthService>().SignInTeacherAsync("Yetkili Öğretmen", "1234", ct));
     }
 
+    /// <summary>
+    /// An enrollment table keyed by more than the student and the course allows the same student in
+    /// the same course twice. Renaming such a key would keep that hole open, so the upgrade stops and
+    /// reports only counts.
+    /// </summary>
+    [Fact]
+    public async Task Upgrade_ThreeColumnEnrollmentKey_RefusesWithoutChanges()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await SqlServerTestDatabase.CreateAsync(ct);
+        await database.ExecuteAsync(
+            LegacySchema.Replace(
+                "PRIMARY KEY (OgrenciID, DersID));",
+                "KayitID INT IDENTITY(1,1) NOT NULL, PRIMARY KEY (OgrenciID, DersID, KayitID));",
+                StringComparison.Ordinal),
+            ct);
+        await database.ExecuteAsync(LegacyData.Replace("(2, 3), (4, 4);", "(2, 3), (2, 3), (4, 4);", StringComparison.Ordinal), ct);
+        const string KeyName = "SELECT name FROM sys.key_constraints WHERE parent_object_id = OBJECT_ID(N'dbo.OgrenciKurslar') AND type = 'PK'";
+        var keyBefore = await database.TextAsync(KeyName, ct);
+
+        await using var provider = database.BuildServices();
+        var error = await Assert.ThrowsAsync<DatabaseInitializationException>(
+            () => provider.GetRequiredService<IDatabaseInitializer>().InitializeAsync(ct));
+
+        var message = error.InnerException?.Message;
+        Assert.Contains("3 enrollment key columns", message, StringComparison.Ordinal);
+        Assert.Contains("1 student and course pairs enrolled more than once", message, StringComparison.Ordinal);
+        Assert.Contains("No changes were made", message, StringComparison.Ordinal);
+        Assert.DoesNotContain("Eski", message, StringComparison.Ordinal);
+        await AssertUnchangedAsync(database, ct);
+        Assert.Equal(3, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.OgrenciKurslar", ct));
+        Assert.Equal(3, await database.ScalarAsync(
+            "SELECT COUNT(*) FROM sys.index_columns ic JOIN sys.indexes i ON i.object_id = ic.object_id AND i.index_id = ic.index_id WHERE i.object_id = OBJECT_ID(N'dbo.OgrenciKurslar') AND i.is_primary_key = 1",
+            ct));
+        Assert.Equal(keyBefore, await database.TextAsync(KeyName, ct));
+        Assert.StartsWith("PK__", keyBefore, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Initialize_DefaultConfiguration_DoesNotCreateDemoCredentials()
     {
