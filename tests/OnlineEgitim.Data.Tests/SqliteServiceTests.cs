@@ -307,8 +307,10 @@ public sealed class SqliteServiceTests : IAsyncLifetime
 
         Assert.False(await setup.IsSetupRequiredAsync(Ct));
         var error = await Assert.ThrowsAsync<BusinessRuleException>(
-            () => setup.CreateFirstTeacherAsync("Yeni Öğretmen", "Kimya", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
+            () => setup.CreateFirstTeacherAsync(TestServices.TestSetupKey.Key, "Yeni Öğretmen", "Kimya", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
         Assert.Equal(SetupService.AlreadyDone, error.Message);
+        Assert.False(await setup.IsTeacherMissingAsync(Ct));
+        Assert.Equal(0, _db.Services.SetupKey().Consumed); // an existing teacher keeps the key unused
         await using var context = _db.CreateContext();
         Assert.Equal(2, await context.Teachers.CountAsync(Ct));
     }

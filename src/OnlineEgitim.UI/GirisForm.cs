@@ -14,6 +14,7 @@ namespace OnlineEgitim.UI
         private readonly IAuthService _auth;
         private readonly IFormFactory _forms;
         private readonly ExclusiveOperation _signIn = new();
+        private bool _offerTeacherSetup;
 
         public GirisForm(IAuthService auth, IFormFactory forms)
         {
@@ -39,6 +40,21 @@ namespace OnlineEgitim.UI
         /// <summary>The signed-in student or teacher, once the form closed with OK.</summary>
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public UserSession? Session { get; private set; }
+
+        /// <summary>
+        /// Shows the link to the first-run setup; set while no teacher exists. The setup itself still
+        /// needs the setup key.
+        /// </summary>
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        internal bool OfferTeacherSetup
+        {
+            get => _offerTeacherSetup;
+            set
+            {
+                _offerTeacherSetup = value;
+                lnkKurulum.Visible = value;
+            }
+        }
 
         /// <summary>Information dialogs; replaced in tests so no window opens.</summary>
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
@@ -71,7 +87,8 @@ namespace OnlineEgitim.UI
                 },
                 btnOgrenciGiris,
                 btnOgretmenGiris,
-                button1);
+                button1,
+                lnkKurulum);
             return session;
         }
 
@@ -96,6 +113,20 @@ namespace OnlineEgitim.UI
         {
             using var teacherSignIn = _forms.Create<OgretmenGirisForm>();
             if (teacherSignIn.ShowDialog(this) == DialogResult.OK && teacherSignIn.Session is { } session)
+            {
+                Complete(session);
+            }
+        }
+
+        private void lnkKurulum_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e)
+        {
+            if (_signIn.IsRunning)
+            {
+                return;
+            }
+
+            using var setup = _forms.Create<IlkKurulumForm>();
+            if (setup.ShowDialog(this) == DialogResult.OK && setup.Session is { } session)
             {
                 Complete(session);
             }

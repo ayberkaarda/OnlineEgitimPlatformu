@@ -6,8 +6,9 @@ using OnlineEgitim.UI.Infrastructure;
 namespace OnlineEgitim.UI
 {
     /// <summary>
-    /// First-run setup: shown while no teacher account exists. The person installing the application
-    /// creates the first teacher account with a password of their own; there is no default password.
+    /// First-run setup: opens by itself on an empty database and from the sign-in while no teacher
+    /// exists. The person installing the application proves it with the local setup key and creates
+    /// the first teacher account with a password of their own; there is no default password.
     /// Closes with <see cref="DialogResult.OK"/> and <see cref="Session"/> set on success.
     /// </summary>
     public partial class IlkKurulumForm : Form
@@ -25,6 +26,8 @@ namespace OnlineEgitim.UI
             InitializeComponent();
             Icon = AppAssets.Icon;
             Text = AppText.Title + " - " + Text;
+            lblAciklama.Text = SetupKeyHint(setup.IssueSetupKey());
+            txtAnahtar.MaxLength = 64;
             txtAd.MaxLength = InputRules.PersonNameMaxLength;
             txtUzmanlik.MaxLength = InputRules.SpecialtyMaxLength;
             txtSifre.MaxLength = PasswordPolicy.MaxLength;
@@ -50,7 +53,7 @@ namespace OnlineEgitim.UI
                 {
                     try
                     {
-                        session = await _setup.CreateFirstTeacherAsync(txtAd.Text, txtUzmanlik.Text, txtSifre.Text, txtSifreTekrar.Text);
+                        session = await _setup.CreateFirstTeacherAsync(txtAnahtar.Text, txtAd.Text, txtUzmanlik.Text, txtSifre.Text, txtSifreTekrar.Text);
                     }
                     finally
                     {
@@ -60,12 +63,24 @@ namespace OnlineEgitim.UI
                         {
                             _create.FocusAfterUnlock(txtSifre);
                         }
+                        else
+                        {
+                            txtAnahtar.Clear();
+                        }
                     }
                 },
                 btnOlustur,
                 btnIptal);
             return session;
         }
+
+        /// <summary>Where the installer finds the setup key; the key itself is never shown.</summary>
+        internal static string SetupKeyHint(string? keyFilePath) =>
+            "Henüz bir öğretmen hesabı yok. İlk öğretmen hesabını yalnızca bu bilgisayarın kurulum anahtarıyla oluşturabilirsiniz. "
+            + (keyFilePath is null
+                ? "Anahtar, EGITIM_SETUP_KEY ortam değişkeninde tanımlıdır."
+                : "Anahtar şu dosyadadır:\n" + keyFilePath)
+            + "\nAnahtar bir kez kullanılır; şifreyi kendiniz belirlersiniz.";
 
         private async void btnOlustur_Click(object? sender, EventArgs e)
         {

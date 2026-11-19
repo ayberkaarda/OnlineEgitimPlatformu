@@ -25,6 +25,19 @@ public sealed class SaveGuardTests
         Assert.False(Find<Button>(form, "btnOgrenciGiris").Enabled);
         Assert.False(Find<Button>(form, "btnOgretmenGiris").Enabled);
         Assert.False(Find<Button>(form, "button1").Enabled);
+        Assert.False(Find<LinkLabel>(form, "lnkKurulum").Enabled);
+    });
+
+    [Fact]
+    public void SignIn_TeacherSetupLink_OnlyWhileNoTeacherExists() => Run(() =>
+    {
+        using var form = new GirisForm(new PendingAuthService(), new NoFormsFactory());
+        Assert.False(form.OfferTeacherSetup);
+
+        form.OfferTeacherSetup = true;
+
+        Assert.True(form.OfferTeacherSetup);
+        Assert.Contains("kurucu anahtarı", Find<LinkLabel>(form, "lnkKurulum").Text, StringComparison.Ordinal);
     });
 
     [Fact]
@@ -134,11 +147,15 @@ public sealed class SaveGuardTests
     {
         var setup = new PendingSetupService();
         using var form = new IlkKurulumForm(setup) { Prompts = new RecordingPrompts() };
+        Find<TextBox>(form, "txtAnahtar").Text = "ABCDE-FGHJK-MNPQR-STVWX";
 
         var first = form.CreateAsync();
         var second = form.CreateAsync();
 
         Assert.Equal(1, setup.CreateCalls);
+        Assert.Equal("ABCDE-FGHJK-MNPQR-STVWX", setup.LastKey);
+        Assert.True(Find<TextBox>(form, "txtAnahtar").UseSystemPasswordChar);
+        Assert.Contains(@"C:\Kurulum\setup-key.txt", Find<Label>(form, "lblAciklama").Text, StringComparison.Ordinal);
         Assert.False(first.IsCompleted);
         Assert.Null(second.Result);
         Assert.False(Find<Button>(form, "btnOlustur").Enabled);

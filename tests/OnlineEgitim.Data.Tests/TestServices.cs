@@ -34,9 +34,14 @@ internal static class TestServices
     {
         services.AddSingleton<TimeProvider>(clock);
         services.AddSingleton<IPasswordHasher>(Hasher);
+        services.AddSingleton<ISetupKeyStore>(new TestSetupKey());
         services.AddBusinessServices();
         return services;
     }
+
+    /// <summary>The setup key store of <paramref name="provider"/>.</summary>
+    public static TestSetupKey SetupKey(this IServiceProvider provider) =>
+        (TestSetupKey)provider.GetRequiredService<ISetupKeyStore>();
 
     /// <summary>Inserts the test accounts and courses into an empty database.</summary>
     public static async Task SeedAsync(EgitimDbContext db, CancellationToken ct)
@@ -56,6 +61,46 @@ internal static class TestServices
     }
 
     public static UserSession Student(int id) => new(AccountRole.Student, id, "ogrenci" + id);
+
+    /// <summary>An in-memory single use setup key; <see cref="Reissue"/> makes <see cref="Key"/> valid again.</summary>
+    internal sealed class TestSetupKey : ISetupKeyStore
+    {
+        public const string Key = "TEST1-SETUP-KEY00-ABCDE";
+
+        private readonly Lock _gate = new();
+        private bool _used;
+
+        public string? KeyFilePath => null;
+
+        public int Consumed { get; private set; }
+
+        public void EnsureIssued()
+        {
+        }
+
+        public void Reissue()
+        {
+            lock (_gate)
+            {
+                _used = false;
+            }
+        }
+
+        public bool TryConsume(string? candidate)
+        {
+            lock (_gate)
+            {
+                if (_used || candidate is null || FileSetupKeyStore.Normalize(candidate) != FileSetupKeyStore.Normalize(Key))
+                {
+                    return false;
+                }
+
+                _used = true;
+                Consumed++;
+                return true;
+            }
+        }
+    }
 
     public static UserSession Teacher(int id) => new(AccountRole.Teacher, id, "ogretmen" + id);
 }

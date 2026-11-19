@@ -118,13 +118,15 @@ public sealed class SqlServerConcurrencyTests
     {
         var ct = TestContext.Current.CancellationToken;
         await using var database = await SqlServerTestDatabase.ReserveAsync(ct);
-        await using var first = database.BuildServices();
+        var key = new TestSetupKey(); // one founder key on the shared computer
+        await using var first = database.BuildServices(s => s.AddSingleton<Business.Security.ISetupKeyStore>(key));
         await first.GetRequiredService<IDatabaseInitializer>().InitializeAsync(ct);
-        await using var second = database.BuildServices();
+        await using var second = database.BuildServices(s => s.AddSingleton<Business.Security.ISetupKeyStore>(key));
 
         for (var round = 0; round < 4; round++)
         {
             await database.ExecuteAsync("DELETE dbo.Egitmenler", ct);
+            key.Reissue();
             var setups = new[] { first, second, first, second }.Select(p => p.GetRequiredService<ISetupService>()).ToList();
             var index = 0;
 
@@ -134,7 +136,7 @@ public sealed class SqlServerConcurrencyTests
                 {
                     var slot = Interlocked.Increment(ref index) - 1;
                     var name = "Kurucu " + (char)('A' + slot);
-                    return setups[slot].CreateFirstTeacherAsync(name, "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", ct);
+                    return setups[slot].CreateFirstTeacherAsync(TestSetupKey.Key, name, "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", ct);
                 },
                 ct);
 
@@ -143,7 +145,42 @@ public sealed class SqlServerConcurrencyTests
                 results.Where(r => r is not null),
                 r => Assert.Equal(SetupService.AlreadyDone, Assert.IsType<BusinessRuleException>(r).Message));
             Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Egitmenler", ct));
+            Assert.Equal(round + 1, key.Consumed);
         }
+    }
+
+    /// <summary>
+    /// A database whose students exist but whose teachers are gone: setups without the key, racing a
+    /// founder with it, never create a teacher; the founder's setup does, once.
+    /// </summary>
+    [Fact]
+    public async Task Setup_ExistingStudents_UnauthorizedRacersCreateNothing()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await SqlServerTestDatabase.ReserveAsync(ct);
+        await using var provider = await InitializeAsync(database, ct);
+        await database.ExecuteAsync("DELETE dbo.Dersler; DELETE dbo.Egitmenler", ct);
+        var setup = provider.GetRequiredService<ISetupService>();
+        Assert.False(await setup.IsSetupRequiredAsync(ct));
+        var index = 0;
+
+        var results = await RaceAsync(
+            Contenders,
+            () =>
+            {
+                var slot = Interlocked.Increment(ref index) - 1;
+                var key = slot == Contenders / 2 ? TestSetupKey.Key : "YANLIS-" + slot;
+                return setup.CreateFirstTeacherAsync(key, "Kurucu " + (char)('A' + slot), "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", ct);
+            },
+            ct);
+
+        Assert.Single(results, r => r is null);
+        Assert.All(
+            results.Where(r => r is not null),
+            r => Assert.Contains(Assert.IsType<BusinessRuleException>(r).Message, new[] { SetupService.SetupKeyInvalid, SetupService.AlreadyDone }));
+        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Egitmenler WHERE AdSoyad = @name", ct, ("@name", "Kurucu " + (char)('A' + (Contenders / 2)))));
+        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Egitmenler", ct));
+        Assert.Equal(1, provider.SetupKey().Consumed);
     }
 
     private static async Task<ServiceProvider> InitializeAsync(SqlServerTestDatabase database, CancellationToken ct)

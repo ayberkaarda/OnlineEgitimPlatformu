@@ -41,14 +41,36 @@ public interface IAccountRepository
 
     Task<bool> AnyTeacherAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>Whether any student or teacher account exists.</summary>
+    Task<bool> AnyAccountAsync(CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Stores <paramref name="teacher"/> only if no teacher exists yet, atomically: of concurrent calls
-    /// at most one succeeds. Returns the new id, or <see langword="null"/> when a teacher already existed.
+    /// at most one succeeds. <paramref name="authorize"/> is the final decision about the caller's
+    /// right to create the first teacher: it is called inside the write transaction, after the check
+    /// found no teacher and while concurrent setups wait, and nothing is written when it returns
+    /// <see langword="false"/>.
     /// </summary>
-    Task<int?> AddFirstTeacherAsync(Teacher teacher, CancellationToken cancellationToken = default);
+    Task<FirstTeacherResult> AddFirstTeacherAsync(Teacher teacher, Func<bool> authorize, CancellationToken cancellationToken = default);
 
     Task<TeacherProfile?> GetTeacherAsync(int id, CancellationToken cancellationToken = default);
 }
+
+/// <summary>Outcome of <see cref="IAccountRepository.AddFirstTeacherAsync"/>.</summary>
+public enum FirstTeacherStatus
+{
+    /// <summary>The teacher was stored; its id is in <see cref="FirstTeacherResult.TeacherId"/>.</summary>
+    Created = 0,
+
+    /// <summary>A teacher existed already; nothing was written.</summary>
+    TeacherExists = 1,
+
+    /// <summary>The authorization was refused; nothing was written.</summary>
+    NotAuthorized = 2,
+}
+
+/// <summary>Result of an attempt to store the first teacher.</summary>
+public readonly record struct FirstTeacherResult(FirstTeacherStatus Status, int TeacherId);
 
 /// <summary>Raised when a sign-in name or e-mail address is already used by another account.</summary>
 public sealed class DuplicateAccountException : Exception

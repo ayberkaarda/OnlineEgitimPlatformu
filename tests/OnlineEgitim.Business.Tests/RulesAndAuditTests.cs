@@ -54,6 +54,7 @@ public sealed class AuditTests
         { AuditEvent.NoteAdded, 7, "course.note.added" },
         { AuditEvent.Enrolled, 8, "course.enrolled" },
         { AuditEvent.AccessDenied, 9, "access.denied" },
+        { AuditEvent.SetupRefused, 10, "setup.refused" },
     };
 
     [Theory]

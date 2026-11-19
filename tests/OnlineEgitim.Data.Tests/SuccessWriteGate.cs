@@ -66,8 +66,11 @@ internal static class SuccessWriteGateExtensions
         public Task<bool> AnyTeacherAsync(CancellationToken cancellationToken = default) =>
             inner.AnyTeacherAsync(cancellationToken);
 
-        public Task<int?> AddFirstTeacherAsync(Teacher teacher, CancellationToken cancellationToken = default) =>
-            inner.AddFirstTeacherAsync(teacher, cancellationToken);
+        public Task<bool> AnyAccountAsync(CancellationToken cancellationToken = default) =>
+            inner.AnyAccountAsync(cancellationToken);
+
+        public Task<FirstTeacherResult> AddFirstTeacherAsync(Teacher teacher, Func<bool> authorize, CancellationToken cancellationToken = default) =>
+            inner.AddFirstTeacherAsync(teacher, authorize, cancellationToken);
 
         public Task<TeacherProfile?> GetTeacherAsync(int id, CancellationToken cancellationToken = default) =>
             inner.GetTeacherAsync(id, cancellationToken);

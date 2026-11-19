@@ -137,9 +137,18 @@ internal sealed class PendingSetupService : ISetupService
 
     public int CreateCalls { get; private set; }
 
+    public string? LastKey { get; private set; }
+
+    public string? KeyFilePath { get; set; } = @"C:\Kurulum\setup-key.txt";
+
     public Task<bool> IsSetupRequiredAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
 
+    public Task<bool> IsTeacherMissingAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+
+    public string? IssueSetupKey() => KeyFilePath;
+
     public Task<UserSession> CreateFirstTeacherAsync(
+        string? setupKey,
         string? fullName,
         string? specialty,
         string? password,
@@ -147,6 +156,7 @@ internal sealed class PendingSetupService : ISetupService
         CancellationToken cancellationToken = default)
     {
         CreateCalls++;
+        LastKey = setupKey;
         _create = new TaskCompletionSource<UserSession>();
         return _create.Task;
     }

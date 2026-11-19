@@ -81,23 +81,36 @@ public sealed class EnrollmentServiceTests
 
 public sealed class SetupServiceTests
 {
+    private const string Key = "AAAAA-BBBBB-CCCCC-DDDDD";
+
     private readonly Mock<IAccountRepository> _accounts = new(MockBehavior.Strict);
+    private readonly Mock<ISetupKeyStore> _keys = new(MockBehavior.Strict);
     private readonly PasswordHasher _hasher = new(iterations: 1_000);
     private readonly RecordingAudit _audit = new();
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private SetupService Service => new(_accounts.Object, _hasher, _audit);
+    private SetupService Service => new(_accounts.Object, _hasher, _keys.Object, _audit);
+
+    /// <summary>The repository runs the authorization inside its transaction, as the real one does.</summary>
+    private void RepositoryCreates(int id, Action<Teacher>? stored = null) =>
+        _accounts.Setup(a => a.AddFirstTeacherAsync(It.IsAny<Teacher>(), It.IsAny<Func<bool>>(), It.IsAny<CancellationToken>()))
+            .Returns<Teacher, Func<bool>, CancellationToken>((t, authorize, _) =>
+            {
+                stored?.Invoke(t);
+                return Task.FromResult(authorize()
+                    ? new FirstTeacherResult(FirstTeacherStatus.Created, id)
+                    : new FirstTeacherResult(FirstTeacherStatus.NotAuthorized, 0));
+            });
 
     [Fact]
     public async Task Create_StoresAHashOfTheChosenPassword()
     {
         Teacher? stored = null;
-        _accounts.Setup(a => a.AddFirstTeacherAsync(It.IsAny<Teacher>(), It.IsAny<CancellationToken>()))
-            .Callback<Teacher, CancellationToken>((t, _) => stored = t)
-            .ReturnsAsync(1);
+        RepositoryCreates(1, t => stored = t);
+        _keys.Setup(k => k.TryConsume(Key)).Returns(true);
 
-        var session = await Service.CreateFirstTeacherAsync(" Ada Kurucu ", " Matematik ", "Gizli.Sifre1", "Gizli.Sifre1", Ct);
+        var session = await Service.CreateFirstTeacherAsync(Key, " Ada Kurucu ", " Matematik ", "Gizli.Sifre1", "Gizli.Sifre1", Ct);
 
         Assert.True(session.IsTeacher);
         Assert.NotNull(stored);
@@ -108,27 +121,123 @@ public sealed class SetupServiceTests
     }
 
     [Fact]
-    public async Task Create_TeacherAlreadyExists_IsRefused()
+    public async Task Create_WrongKey_IsRefusedAndAudited()
     {
-        _accounts.Setup(a => a.AddFirstTeacherAsync(It.IsAny<Teacher>(), It.IsAny<CancellationToken>())).ReturnsAsync((int?)null);
+        RepositoryCreates(1);
+        _keys.Setup(k => k.TryConsume("YANLIS")).Returns(false);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(
-            () => Service.CreateFirstTeacherAsync("Ada Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
+            () => Service.CreateFirstTeacherAsync("YANLIS", "Ada Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
+
+        Assert.Equal(SetupService.SetupKeyInvalid, error.Message);
+        Assert.Equal([(AuditEvent.SetupRefused, (AccountRole?)null)], _audit.Events);
+    }
+
+    [Fact]
+    public async Task Create_TeacherAlreadyExists_IsRefused()
+    {
+        _accounts.Setup(a => a.AddFirstTeacherAsync(It.IsAny<Teacher>(), It.IsAny<Func<bool>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FirstTeacherResult(FirstTeacherStatus.TeacherExists, 0));
+
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => Service.CreateFirstTeacherAsync(Key, "Ada Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
 
         Assert.Equal(SetupService.AlreadyDone, error.Message);
         Assert.Empty(_audit.Events);
+        _keys.VerifyNoOtherCalls(); // the key is not used up
     }
 
     [Theory]
-    [InlineData(null, "Matematik", "Gizli.Sifre1", "Gizli.Sifre1")]
-    [InlineData("Ada Kurucu", " ", "Gizli.Sifre1", "Gizli.Sifre1")]
-    [InlineData("Ada Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre2")]
-    [InlineData("Ada Kurucu", "Matematik", "kisa", "kisa")]
-    [InlineData("Ada<script>", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1")]
-    public async Task Create_InvalidInput_IsRefusedBeforeAnyWrite(string? name, string? specialty, string password, string repeat)
+    [InlineData(Key, null, "Matematik", "Gizli.Sifre1", "Gizli.Sifre1")]
+    [InlineData(Key, "Ada Kurucu", " ", "Gizli.Sifre1", "Gizli.Sifre1")]
+    [InlineData(Key, "Ada Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre2")]
+    [InlineData(Key, "Ada Kurucu", "Matematik", "kisa", "kisa")]
+    [InlineData(Key, "Ada<script>", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1")]
+    [InlineData(" ", "Ada Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1")]
+    public async Task Create_InvalidInput_IsRefusedBeforeAnyWrite(string? key, string? name, string? specialty, string password, string repeat)
     {
-        await Assert.ThrowsAsync<BusinessRuleException>(() => Service.CreateFirstTeacherAsync(name, specialty, password, repeat, Ct));
+        await Assert.ThrowsAsync<BusinessRuleException>(() => Service.CreateFirstTeacherAsync(key, name, specialty, password, repeat, Ct));
 
         _accounts.VerifyNoOtherCalls();
+        _keys.VerifyNoOtherCalls();
+    }
+}
+
+public sealed class FileSetupKeyStoreTests : IDisposable
+{
+    private readonly string _directory = Path.Combine(Path.GetTempPath(), "OnlineEgitimKeyTest_" + Guid.NewGuid().ToString("N"));
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_directory))
+        {
+            Directory.Delete(_directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void FileKey_WorksOnceAndIsDeleted()
+    {
+        var store = new FileSetupKeyStore(_directory, environmentKey: null);
+        store.EnsureIssued();
+        var path = Assert.IsType<string>(store.KeyFilePath);
+        var key = File.ReadAllText(path).Trim();
+        store.EnsureIssued(); // keeps the issued key
+
+        Assert.Matches("^[0-9A-Z]{5}(-[0-9A-Z]{5}){3}$", key);
+        Assert.Equal(key, File.ReadAllText(path).Trim());
+        Assert.False(store.TryConsume("YANLIS-" + key));
+        Assert.False(store.TryConsume(null));
+        Assert.True(File.Exists(path));
+        Assert.True(store.TryConsume(" " + key.ToLowerInvariant().Replace("-", " ", StringComparison.Ordinal) + " "));
+        Assert.False(File.Exists(path));
+        Assert.False(store.TryConsume(key));
+        Assert.Empty(Directory.GetFiles(_directory));
+
+        store.EnsureIssued(); // a new key for the next founder operation
+        Assert.NotEqual(key, File.ReadAllText(path).Trim());
+    }
+
+    [Fact]
+    public void FileKey_ConcurrentConsumers_ExactlyOneWins()
+    {
+        var store = new FileSetupKeyStore(_directory, environmentKey: null);
+        store.EnsureIssued();
+        var key = File.ReadAllText(store.KeyFilePath!).Trim();
+
+        var wins = 0;
+        Parallel.For(0, 16, _ =>
+        {
+            if (new FileSetupKeyStore(_directory, environmentKey: null).TryConsume(key))
+            {
+                Interlocked.Increment(ref wins);
+            }
+        });
+
+        Assert.Equal(1, wins);
+    }
+
+    [Fact]
+    public void EnvironmentKey_WorksOnceAndWritesNoKeyFile()
+    {
+        const string Key = "ortam-anahtari-1234567";
+        var store = new FileSetupKeyStore(_directory, Key);
+        store.EnsureIssued();
+
+        Assert.Null(store.KeyFilePath);
+        Assert.False(store.TryConsume("ortam-anahtari-1234568"));
+        Assert.True(store.TryConsume(Key));
+        Assert.False(store.TryConsume(Key));
+        Assert.False(new FileSetupKeyStore(_directory, Key).TryConsume(Key));
+        Assert.All(Directory.GetFiles(_directory), f => Assert.DoesNotContain("ortam", File.ReadAllText(f), StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void EnvironmentKey_TooShort_IsIgnored()
+    {
+        var store = new FileSetupKeyStore(_directory, "kisa");
+
+        Assert.NotNull(store.KeyFilePath);
+        Assert.False(store.TryConsume("kisa"));
     }
 }

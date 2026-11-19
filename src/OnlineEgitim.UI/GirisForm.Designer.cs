@@ -1,4 +1,4 @@
-﻿namespace OnlineEgitim.UI
+namespace OnlineEgitim.UI
 {
     partial class GirisForm
     {
@@ -27,6 +27,7 @@
             this.pictureBox2 = new System.Windows.Forms.PictureBox();
             this.pictureBox1 = new System.Windows.Forms.PictureBox();
             this.txtSifre = new System.Windows.Forms.TextBox();
+            this.lnkKurulum = new System.Windows.Forms.LinkLabel();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox2)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).BeginInit();
             this.SuspendLayout();
@@ -119,7 +120,7 @@
             this.pictureBox1.Location = new System.Drawing.Point(340, 0);
             this.pictureBox1.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
             this.pictureBox1.Name = "pictureBox1";
-            this.pictureBox1.Size = new System.Drawing.Size(371, 377);
+            this.pictureBox1.Size = new System.Drawing.Size(371, 400);
             this.pictureBox1.SizeMode = System.Windows.Forms.PictureBoxSizeMode.StretchImage;
             this.pictureBox1.TabIndex = 7;
             this.pictureBox1.TabStop = false;
@@ -132,12 +133,26 @@
             this.txtSifre.Size = new System.Drawing.Size(296, 29);
             this.txtSifre.TabIndex = 10;
             // 
+            // lnkKurulum
+            // 
+            this.lnkKurulum.AutoSize = true;
+            this.lnkKurulum.BackColor = System.Drawing.Color.Transparent;
+            this.lnkKurulum.Location = new System.Drawing.Point(17, 372);
+            this.lnkKurulum.Name = "lnkKurulum";
+            this.lnkKurulum.Size = new System.Drawing.Size(232, 16);
+            this.lnkKurulum.TabIndex = 11;
+            this.lnkKurulum.TabStop = true;
+            this.lnkKurulum.Text = "İlk öğretmen kurulumu (kurucu anahtarı)";
+            this.lnkKurulum.Visible = false;
+            this.lnkKurulum.LinkClicked += new System.Windows.Forms.LinkLabelLinkClickedEventHandler(this.lnkKurulum_LinkClicked);
+            // 
             // GirisForm
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.SystemColors.ActiveCaption;
-            this.ClientSize = new System.Drawing.Size(709, 373);
+            this.ClientSize = new System.Drawing.Size(709, 400);
+            this.Controls.Add(this.lnkKurulum);
             this.Controls.Add(this.txtSifre);
             this.Controls.Add(this.pictureBox2);
             this.Controls.Add(this.button1);
@@ -174,5 +189,6 @@
         private System.Windows.Forms.Button button1;
         private System.Windows.Forms.PictureBox pictureBox2;
         private System.Windows.Forms.TextBox txtSifre;
+        private System.Windows.Forms.LinkLabel lnkKurulum;
     }
 }

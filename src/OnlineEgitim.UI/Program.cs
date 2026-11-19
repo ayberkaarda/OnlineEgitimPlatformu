@@ -46,8 +46,10 @@ namespace OnlineEgitim.UI
             {
                 // No synchronization context exists yet, so blocking here cannot deadlock.
                 serviceProvider.GetRequiredService<IDatabaseInitializer>().InitializeAsync().GetAwaiter().GetResult();
-                var setupRequired = serviceProvider.GetRequiredService<ISetupService>().IsSetupRequiredAsync().GetAwaiter().GetResult();
-                session = SignIn(serviceProvider.GetRequiredService<IFormFactory>(), setupRequired);
+                var setup = serviceProvider.GetRequiredService<ISetupService>();
+                var setupRequired = setup.IsSetupRequiredAsync().GetAwaiter().GetResult();
+                var teacherMissing = setupRequired || setup.IsTeacherMissingAsync().GetAwaiter().GetResult();
+                session = SignIn(serviceProvider.GetRequiredService<IFormFactory>(), setupRequired, teacherMissing);
             }
 #pragma warning disable CA1031 // Startup boundary: report and exit instead of crashing.
             catch (Exception ex)
@@ -67,10 +69,11 @@ namespace OnlineEgitim.UI
         }
 
         /// <summary>
-        /// The first-run setup while no teacher exists, otherwise the sign-in. Returns the session, or
-        /// <see langword="null"/> when the user closed the window.
+        /// The first-run setup on an empty database, otherwise the sign-in; a database with accounts
+        /// but no teacher offers the setup (with the setup key) from the sign-in. Returns the session,
+        /// or <see langword="null"/> when the user closed the window.
         /// </summary>
-        private static UserSession? SignIn(IFormFactory forms, bool setupRequired)
+        private static UserSession? SignIn(IFormFactory forms, bool setupRequired, bool teacherMissing)
         {
             if (setupRequired)
             {
@@ -79,6 +82,7 @@ namespace OnlineEgitim.UI
             }
 
             using var signIn = forms.Create<GirisForm>();
+            signIn.OfferTeacherSetup = teacherMissing;
             return signIn.ShowDialog() == DialogResult.OK ? signIn.Session : null;
         }
 

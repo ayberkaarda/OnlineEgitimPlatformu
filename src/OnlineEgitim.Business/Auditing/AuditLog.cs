@@ -42,6 +42,9 @@ public enum AuditEvent
     /// not its own or does not exist (both get the same answer and the same event).
     /// </summary>
     AccessDenied = 9,
+
+    /// <summary>A founder operation was refused because the setup key was wrong or already used.</summary>
+    SetupRefused = 10,
 }
 
 /// <summary>Receives <see cref="AuditEvent"/>s.</summary>
@@ -64,6 +67,7 @@ public static class AuditCodes
         AuditEvent.NoteAdded => "course.note.added",
         AuditEvent.Enrolled => "course.enrolled",
         AuditEvent.AccessDenied => "access.denied",
+        AuditEvent.SetupRefused => "setup.refused",
         _ => throw new ArgumentOutOfRangeException(nameof(auditEvent), auditEvent, "Unknown audit event."),
     };
 

@@ -105,9 +105,17 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
         return await db.Teachers.AnyAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<int?> AddFirstTeacherAsync(Teacher teacher, CancellationToken cancellationToken = default)
+    public async Task<bool> AnyAccountAsync(CancellationToken cancellationToken = default)
+    {
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        return await db.Teachers.AnyAsync(cancellationToken).ConfigureAwait(false)
+            || await db.Students.AnyAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<FirstTeacherResult> AddFirstTeacherAsync(Teacher teacher, Func<bool> authorize, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(teacher);
+        ArgumentNullException.ThrowIfNull(authorize);
 
         try
         {
@@ -119,7 +127,13 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
             await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken).ConfigureAwait(false);
             if (await AnyTeacherLockedAsync(db, cancellationToken).ConfigureAwait(false))
             {
-                return null;
+                return new FirstTeacherResult(FirstTeacherStatus.TeacherExists, 0);
+            }
+
+            // Decided while the lock is held: only the setup that gets here first can use the authority.
+            if (!authorize())
+            {
+                return new FirstTeacherResult(FirstTeacherStatus.NotAuthorized, 0);
             }
 
             var entity = new Teacher
@@ -132,14 +146,14 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
             db.Teachers.Add(entity);
             await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-            return entity.Id;
+            return new FirstTeacherResult(FirstTeacherStatus.Created, entity.Id);
         }
         catch (Exception ex) when (ex is DbUpdateException or DbException || ex.InnerException is DbUpdateException or DbException)
         {
             // Lost the race (deadlock victim or a rejected insert); the winner's row decides.
             if (await AnyTeacherAsync(CancellationToken.None).ConfigureAwait(false))
             {
-                return null;
+                return new FirstTeacherResult(FirstTeacherStatus.TeacherExists, 0);
             }
 
             throw;
