@@ -40,11 +40,11 @@ internal sealed record StudentNameInput(string? FullName)
     public static StudentNameInput Create(string? fullName) => new(InputRules.Clean(fullName));
 }
 
-/// <summary>A new course. Name and topic are cleaned.</summary>
-internal sealed record CourseInput(string? Name, string? Topic)
+/// <summary>A new or changed course. Name and topic are cleaned; no capacity means no limit.</summary>
+internal sealed record CourseInput(string? Name, string? Topic, int? Capacity)
 {
-    public static CourseInput Create(string? name, string? topic) =>
-        new(InputRules.Clean(name), InputRules.Clean(topic));
+    public static CourseInput Create(string? name, string? topic, int? capacity = null) =>
+        new(InputRules.Clean(name), InputRules.Clean(topic), capacity);
 }
 
 /// <summary>A note for a course. The content is cleaned (trimmed at both ends, inner line breaks kept).</summary>

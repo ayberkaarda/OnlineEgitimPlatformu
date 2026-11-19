@@ -25,4 +25,7 @@ internal static class SchemaLimits
 
     /// <summary>Values of <see cref="Domain.Entities.PasswordFormat"/>: 0 PBKDF2 hash, 1 legacy plain text, 2 none.</summary>
     public const string PasswordFormatCheck = "[SifreBicimi] IN (0, 1, 2)";
+
+    /// <summary>A course's capacity: no limit (NULL) or a number of seats from zero up.</summary>
+    public const string CapacityCheck = "[Kontenjan] IS NULL OR [Kontenjan] >= 0";
 }

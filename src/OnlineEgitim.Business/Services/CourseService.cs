@@ -1,3 +1,4 @@
+using System.Globalization;
 using FluentValidation;
 using OnlineEgitim.Business.Auditing;
 using OnlineEgitim.Business.Validation;
@@ -19,7 +20,8 @@ public sealed record CourseDetails(
     bool NotesVisible,
     IReadOnlyList<string> Notes,
     IReadOnlyList<string>? Students,
-    int StudentCount);
+    int StudentCount,
+    int? Capacity = null);
 
 /// <summary>Course catalogue, course details, course creation and notes.</summary>
 public interface ICourseService
@@ -39,8 +41,26 @@ public interface ICourseService
     /// </summary>
     Task<CourseDetails> GetDetailsAsync(UserSession session, int courseId, CancellationToken cancellationToken = default);
 
-    /// <summary>Creates a course owned by the signed-in teacher; returns its id.</summary>
-    Task<int> CreateAsync(UserSession session, string? name, string? topic, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Creates a course owned by the signed-in teacher; returns its id. <paramref name="capacity"/> is
+    /// the number of seats (0 to 1000), or <see langword="null"/> for no limit.
+    /// </summary>
+    Task<int> CreateAsync(UserSession session, string? name, string? topic, int? capacity, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Changes name, topic and capacity of one of the signed-in teacher's courses. The capacity cannot
+    /// go below the number of students in the course. Any other id is answered like a missing course.
+    /// </summary>
+    Task UpdateAsync(UserSession session, int courseId, string? name, string? topic, int? capacity, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deletes one of the signed-in teacher's courses. <paramref name="confirmedStudents"/> is the number
+    /// of enrolled students the teacher confirmed the deletion for (0 when the course is empty); when
+    /// the course has a different number by then, nothing is deleted and the teacher is asked again.
+    /// The course is kept as deleted with its notes, and its enrollments are closed, so it disappears
+    /// from every list and its notes from every student. Any other id is answered like a missing course.
+    /// </summary>
+    Task DeleteAsync(UserSession session, int courseId, int confirmedStudents, CancellationToken cancellationToken = default);
 
     /// <summary>Adds a note to one of the signed-in teacher's courses.</summary>
     Task AddNoteAsync(UserSession session, int courseId, string? content, CancellationToken cancellationToken = default);
@@ -50,10 +70,18 @@ internal sealed class CourseService(
     ICourseRepository courses,
     IEnrollmentRepository enrollments,
     IAccountRepository accounts,
+    TimeProvider timeProvider,
     IAuditLog audit,
     IValidator<CourseInput> courseValidator,
     IValidator<NoteInput> noteValidator) : ICourseService
 {
+    internal const string StudentsChanged =
+        "Siz onaylarken bu kursa öğrenci katıldı veya ayrıldı. Kurs silinmedi; lütfen yeniden deneyin.";
+
+    internal static string CapacityBelowStudents(int students) => string.Create(
+        CultureInfo.InvariantCulture,
+        $"Kontenjan, kayıtlı öğrenci sayısının ({students}) altına düşürülemez.");
+
     public Task<IReadOnlyList<CourseSummary>> GetCatalogAsync(UserSession session, CancellationToken cancellationToken = default)
     {
         Access.RequireRole(session, AccountRole.Student, audit);
@@ -90,7 +118,7 @@ internal sealed class CourseService(
         {
             var notes = await courses.GetNotesAsync(course.Id, cancellationToken).ConfigureAwait(false);
             var students = await enrollments.GetStudentNamesAsync(course.Id, cancellationToken).ConfigureAwait(false);
-            return new CourseDetails(course.Id, course.Name, course.Topic, course.TeacherName, true, notes, students, count);
+            return new CourseDetails(course.Id, course.Name, course.Topic, course.TeacherName, true, notes, students, count, course.Capacity);
         }
 
         // The catalogue is public, the notes are for the course's students and the names of the other
@@ -99,21 +127,64 @@ internal sealed class CourseService(
         IReadOnlyList<string> visibleNotes = enrolled
             ? await courses.GetNotesAsync(course.Id, cancellationToken).ConfigureAwait(false)
             : [];
-        return new CourseDetails(course.Id, course.Name, course.Topic, course.TeacherName, enrolled, visibleNotes, null, count);
+        return new CourseDetails(course.Id, course.Name, course.Topic, course.TeacherName, enrolled, visibleNotes, null, count, course.Capacity);
     }
 
-    public async Task<int> CreateAsync(UserSession session, string? name, string? topic, CancellationToken cancellationToken = default)
+    public async Task<int> CreateAsync(UserSession session, string? name, string? topic, int? capacity, CancellationToken cancellationToken = default)
     {
         Access.RequireRole(session, AccountRole.Teacher, audit);
 
-        var input = CourseInput.Create(name, topic);
+        var input = CourseInput.Create(name, topic, capacity);
         courseValidator.ValidateOrThrow(input);
 
         var id = await courses.AddAsync(
-            new Course { Name = input.Name!, Topic = input.Topic, TeacherId = session.UserId },
+            new Course { Name = input.Name!, Topic = input.Topic, TeacherId = session.UserId, Capacity = input.Capacity },
             cancellationToken).ConfigureAwait(false);
         audit.Record(AuditEvent.CourseCreated, AccountRole.Teacher);
         return id;
+    }
+
+    public async Task UpdateAsync(UserSession session, int courseId, string? name, string? topic, int? capacity, CancellationToken cancellationToken = default)
+    {
+        Access.RequireRole(session, AccountRole.Teacher, audit);
+
+        var input = CourseInput.Create(name, topic, capacity);
+        courseValidator.ValidateOrThrow(input);
+
+        // Ownership and the capacity rule are decided inside the repository's transaction, under the
+        // course's lock; a missing, deleted and foreign course get the same answer.
+        var result = courseId > 0
+            ? await courses.UpdateAsync(courseId, session.UserId, input.Name!, input.Topic, input.Capacity, cancellationToken).ConfigureAwait(false)
+            : new CourseWriteResult(CourseWriteStatus.NotFound, 0);
+        switch (result.Status)
+        {
+            case CourseWriteStatus.Done:
+                audit.Record(AuditEvent.CourseUpdated, AccountRole.Teacher);
+                return;
+            case CourseWriteStatus.CapacityBelowEnrollments:
+                throw new BusinessRuleException(CapacityBelowStudents(result.StudentCount));
+            default:
+                throw Access.CourseNotFoundFor(session, audit);
+        }
+    }
+
+    public async Task DeleteAsync(UserSession session, int courseId, int confirmedStudents, CancellationToken cancellationToken = default)
+    {
+        Access.RequireRole(session, AccountRole.Teacher, audit);
+
+        var result = courseId > 0 && confirmedStudents >= 0
+            ? await courses.DeleteAsync(courseId, session.UserId, confirmedStudents, timeProvider.GetUtcNow().UtcDateTime, cancellationToken).ConfigureAwait(false)
+            : new CourseWriteResult(CourseWriteStatus.NotFound, 0);
+        switch (result.Status)
+        {
+            case CourseWriteStatus.Done:
+                audit.Record(AuditEvent.CourseDeleted, AccountRole.Teacher);
+                return;
+            case CourseWriteStatus.StudentsChanged:
+                throw new BusinessRuleException(StudentsChanged);
+            default:
+                throw Access.CourseNotFoundFor(session, audit);
+        }
     }
 
     public async Task AddNoteAsync(UserSession session, int courseId, string? content, CancellationToken cancellationToken = default)

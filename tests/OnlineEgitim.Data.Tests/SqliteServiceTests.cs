@@ -169,7 +169,7 @@ public sealed class SqliteServiceTests : IAsyncLifetime
     [Fact]
     public async Task CreateCourse_BelongsToTheSignedInTeacherOnly()
     {
-        var id = await Courses.CreateAsync(Teacher(EceId), " Grafik ", " Renk ve biçim ", Ct);
+        var id = await Courses.CreateAsync(Teacher(EceId), " Grafik ", " Renk ve biçim ", null, Ct);
 
         var mine = await Courses.GetTeachingAsync(Teacher(EceId), Ct);
         var theirs = await Courses.GetTeachingAsync(Teacher(DenizId), Ct);
@@ -180,7 +180,7 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         Assert.Equal("Grafik", created.Name);
         Assert.Equal("Renk ve biçim", created.Topic);
         Assert.Equal("Ece Taslak", created.TeacherName);
-        await Assert.ThrowsAsync<AccessDeniedException>(() => Courses.CreateAsync(Student(MertId), "Ders", "Konu", Ct));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => Courses.CreateAsync(Student(MertId), "Ders", "Konu", null, Ct));
     }
 
     [Fact]
@@ -305,9 +305,9 @@ public sealed class SqliteServiceTests : IAsyncLifetime
     [Fact]
     public async Task InvalidCourseOrNote_WritesNothing()
     {
-        await AssertRefusedAsync(ValidationMessages.CourseFieldsRequired, () => Courses.CreateAsync(Teacher(DenizId), "Ders", "  ", Ct));
-        await AssertRefusedAsync(ValidationMessages.CourseNameTooLong, () => Courses.CreateAsync(Teacher(DenizId), new string('d', 101), "Konu", Ct));
-        await AssertRefusedAsync(ValidationMessages.TopicTooLong, () => Courses.CreateAsync(Teacher(DenizId), "Ders", new string('k', 201), Ct));
+        await AssertRefusedAsync(ValidationMessages.CourseFieldsRequired, () => Courses.CreateAsync(Teacher(DenizId), "Ders", "  ", null, Ct));
+        await AssertRefusedAsync(ValidationMessages.CourseNameTooLong, () => Courses.CreateAsync(Teacher(DenizId), new string('d', 101), "Konu", null, Ct));
+        await AssertRefusedAsync(ValidationMessages.TopicTooLong, () => Courses.CreateAsync(Teacher(DenizId), "Ders", new string('k', 201), null, Ct));
         await AssertRefusedAsync(ValidationMessages.NoteRequired, () => Courses.AddNoteAsync(Teacher(DenizId), DenizCourseId, " \r\n ", Ct));
         await AssertRefusedAsync(ValidationMessages.NoteTooLong, () => Courses.AddNoteAsync(Teacher(DenizId), DenizCourseId, new string('n', 501), Ct));
         await AssertRefusedAsync(NotFound, () => Courses.AddNoteAsync(Teacher(DenizId), EceCourseId, "Başkasının dersine not", Ct));

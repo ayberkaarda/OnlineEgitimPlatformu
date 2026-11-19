@@ -60,7 +60,8 @@ public sealed class ListingTests
 
         Assert.Equal("12 - Temel Programlama / Deniz Örnek / Döngüler", new CourseItem(course, CourseItemStyle.Catalog).ToString());
         Assert.Equal("Temel Programlama / Deniz Örnek / -", new CourseItem(noTopic, CourseItemStyle.Mine).ToString());
-        Assert.Equal("12 - Temel Programlama", new CourseItem(course, CourseItemStyle.Teaching).ToString());
+        Assert.Equal("12 - Temel Programlama (0/sınırsız öğrenci)", new CourseItem(course, CourseItemStyle.Teaching).ToString());
+        Assert.Equal("12 - Temel Programlama (3/20 öğrenci)", new CourseItem(course with { Capacity = 20, StudentCount = 3 }, CourseItemStyle.Teaching).ToString());
     }
 
     [Fact]

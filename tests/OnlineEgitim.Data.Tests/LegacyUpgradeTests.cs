@@ -92,6 +92,11 @@ public sealed class LegacyUpgradeTests
         Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.__EFMigrationsHistory WHERE MigrationId LIKE N'%_InitialCreate'", ct));
         await AssertUpgradedSchemaAsync(database, ct);
 
+        // The later migrations ran on the adopted schema: the original courses have no seat limit and
+        // are not deleted, and the original enrollments are active.
+        Assert.Equal(2, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Dersler WHERE Kontenjan IS NULL AND SilinmeTarihi IS NULL", ct));
+        Assert.Equal(2, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.OgrenciKurslar WHERE AyrilmaTarihi IS NULL", ct));
+
         // Plain text passwords still work once and are replaced with hashes; accounts without a
         // password stay unable to sign in, as they were.
         var auth = provider.GetRequiredService<IAuthService>();
@@ -112,7 +117,7 @@ public sealed class LegacyUpgradeTests
         Assert.Equal([3], (await enrollments.GetMyCoursesAsync(student, ct)).Select(c => c.Id));
 
         // New rows work on the upgraded schema and continue after the existing identities.
-        var courseId = await courses.CreateAsync(teacher, "Yeni Ders", "Yeni Konu", ct);
+        var courseId = await courses.CreateAsync(teacher, "Yeni Ders", "Yeni Konu", null, ct);
         Assert.True(courseId > 4);
         await courses.AddNoteAsync(teacher, courseId, "Yeni not", ct);
         await enrollments.EnrollAsync(student, courseId, ct);
@@ -442,7 +447,7 @@ public sealed class LegacyUpgradeTests
             "PK_Ogrenci", "PK_Egitmenler", "PK_Dersler", "PK_Notlar", "PK_OgrenciKurslar",
             "FK_Dersler_Egitmenler", "FK_Notlar_Dersler", "FK_OgrenciKurslar_Ogrenci", "FK_OgrenciKurslar_Dersler",
             "CK_Ogrenci_BasarisizGiris", "CK_Ogrenci_SifreBicimi", "CK_Egitmenler_BasarisizGiris", "CK_Egitmenler_SifreBicimi",
-            "PK_KurulumAnahtarlari",
+            "PK_KurulumAnahtarlari", "CK_Dersler_Kontenjan",
         ];
         foreach (var name in expected)
         {

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Time.Testing;
 using Moq;
 using OnlineEgitim.Business.Auditing;
 using OnlineEgitim.Business.Services;
@@ -16,10 +17,11 @@ public sealed class CourseServiceTests
     private readonly Mock<IEnrollmentRepository> _enrollments = new(MockBehavior.Strict);
     private readonly Mock<IAccountRepository> _accounts = new(MockBehavior.Strict);
     private readonly RecordingAudit _audit = new();
+    private readonly FakeTimeProvider _clock = new(new DateTimeOffset(2026, 3, 2, 10, 0, 0, TimeSpan.Zero));
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private CourseService Service => new(_courses.Object, _enrollments.Object, _accounts.Object, _audit, Validators.Course, Validators.Note);
+    private CourseService Service => new(_courses.Object, _enrollments.Object, _accounts.Object, _clock, _audit, Validators.Course, Validators.Note);
 
     [Fact]
     public async Task Details_ForeignAndMissingCourse_SameAnswerSameAuditAndNoDataRead()
@@ -119,7 +121,7 @@ public sealed class CourseServiceTests
             .Callback<Course, CancellationToken>((c, _) => stored = c)
             .ReturnsAsync(9);
 
-        var id = await Service.CreateAsync(Sessions.Teacher(4), " Grafik ", " Renk ", Ct);
+        var id = await Service.CreateAsync(Sessions.Teacher(4), " Grafik ", " Renk ", null, Ct);
 
         Assert.Equal(9, id);
         Assert.NotNull(stored);
@@ -133,7 +135,7 @@ public sealed class CourseServiceTests
     [InlineData("Ders", "  ")]
     public async Task Create_MissingField_IsRefused(string? name, string? topic)
     {
-        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service.CreateAsync(Sessions.Teacher(), name, topic, Ct));
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service.CreateAsync(Sessions.Teacher(), name, topic, null, Ct));
 
         Assert.Equal(ValidationMessages.CourseFieldsRequired, error.Message);
         _courses.VerifyNoOtherCalls();
@@ -142,15 +144,126 @@ public sealed class CourseServiceTests
     [Fact]
     public async Task Create_TooLongValues_AreRefused()
     {
-        await Assert.ThrowsAsync<BusinessRuleException>(() => Service.CreateAsync(Sessions.Teacher(), new string('x', 101), "Konu", Ct));
-        await Assert.ThrowsAsync<BusinessRuleException>(() => Service.CreateAsync(Sessions.Teacher(), "Ders", new string('x', 201), Ct));
+        await Assert.ThrowsAsync<BusinessRuleException>(() => Service.CreateAsync(Sessions.Teacher(), new string('x', 101), "Konu", null, Ct));
+        await Assert.ThrowsAsync<BusinessRuleException>(() => Service.CreateAsync(Sessions.Teacher(), "Ders", new string('x', 201), null, Ct));
         _courses.VerifyNoOtherCalls();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(1000)]
+    public async Task Create_CapacityWithinLimits_IsStored(int? capacity)
+    {
+        Course? stored = null;
+        _courses.Setup(c => c.AddAsync(It.IsAny<Course>(), It.IsAny<CancellationToken>()))
+            .Callback<Course, CancellationToken>((c, _) => stored = c)
+            .ReturnsAsync(9);
+
+        await Service.CreateAsync(Sessions.Teacher(4), "Grafik", "Renk", capacity, Ct);
+
+        Assert.Equal(capacity, stored!.Capacity);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(1001)]
+    [InlineData(int.MinValue)]
+    public async Task CreateOrUpdate_CapacityOutOfRange_IsRefusedBeforeAnyWrite(int capacity)
+    {
+        var create = await Assert.ThrowsAsync<BusinessRuleException>(() => Service.CreateAsync(Sessions.Teacher(), "Ders", "Konu", capacity, Ct));
+        var update = await Assert.ThrowsAsync<BusinessRuleException>(() => Service.UpdateAsync(Sessions.Teacher(), 3, "Ders", "Konu", capacity, Ct));
+
+        Assert.Equal(ValidationMessages.CapacityInvalid, create.Message);
+        Assert.Equal(ValidationMessages.CapacityInvalid, update.Message);
+        _courses.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task Update_ForeignOrMissingCourse_SameAnswerAsMissingAndAudited()
+    {
+        _courses.Setup(c => c.UpdateAsync(3, 2, "Ders", "Konu", 5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CourseWriteResult(CourseWriteStatus.NotFound, 0));
+
+        var foreign = await Assert.ThrowsAsync<BusinessRuleException>(() => Service.UpdateAsync(Sessions.Teacher(2), 3, " Ders ", " Konu ", 5, Ct));
+        var none = await Assert.ThrowsAsync<BusinessRuleException>(() => Service.UpdateAsync(Sessions.Teacher(2), 0, "Ders", "Konu", 5, Ct));
+
+        Assert.Equal(Access.CourseNotFound, foreign.Message);
+        Assert.Equal(Access.CourseNotFound, none.Message);
+        Assert.Equal(2, _audit.Events.Count(e => e.Event == AuditEvent.AccessDenied));
+    }
+
+    [Fact]
+    public async Task Update_CapacityBelowStudents_NamesTheCountAndChangesNothing()
+    {
+        _courses.Setup(c => c.UpdateAsync(3, 1, "Ders", "Konu", 2, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CourseWriteResult(CourseWriteStatus.CapacityBelowEnrollments, 3));
+
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service.UpdateAsync(Sessions.Teacher(1), 3, "Ders", "Konu", 2, Ct));
+
+        Assert.Equal("Kontenjan, kayıtlı öğrenci sayısının (3) altına düşürülemez.", error.Message);
+        Assert.Empty(_audit.Events);
+    }
+
+    [Fact]
+    public async Task Update_Accepted_IsAudited()
+    {
+        _courses.Setup(c => c.UpdateAsync(3, 1, "Ders", null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CourseWriteResult(CourseWriteStatus.Done, 0));
+
+        await Assert.ThrowsAsync<BusinessRuleException>(() => Service.UpdateAsync(Sessions.Teacher(1), 3, "Ders", null, null, Ct));
+
+        // A topic is required, as for a new course; with one the change is stored and audited.
+        _courses.Setup(c => c.UpdateAsync(3, 1, "Ders", "Konu", null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CourseWriteResult(CourseWriteStatus.Done, 0));
+        await Service.UpdateAsync(Sessions.Teacher(1), 3, "Ders", "Konu", null, Ct);
+        Assert.Equal([(AuditEvent.CourseUpdated, (AccountRole?)AccountRole.Teacher)], _audit.Events);
+    }
+
+    [Fact]
+    public async Task Delete_UsesTheClockAndTheConfirmedCount()
+    {
+        _courses.Setup(c => c.DeleteAsync(3, 1, 2, _clock.GetUtcNow().UtcDateTime, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CourseWriteResult(CourseWriteStatus.Done, 2));
+
+        await Service.DeleteAsync(Sessions.Teacher(1), 3, 2, Ct);
+
+        Assert.Equal([(AuditEvent.CourseDeleted, (AccountRole?)AccountRole.Teacher)], _audit.Events);
+    }
+
+    [Fact]
+    public async Task Delete_StudentsChangedSinceTheConfirmation_AsksAgain()
+    {
+        _courses.Setup(c => c.DeleteAsync(3, 1, 0, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CourseWriteResult(CourseWriteStatus.StudentsChanged, 1));
+
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service.DeleteAsync(Sessions.Teacher(1), 3, 0, Ct));
+
+        Assert.Equal(CourseService.StudentsChanged, error.Message);
+        Assert.Empty(_audit.Events);
+    }
+
+    [Fact]
+    public async Task Delete_ForeignMissingOrInvalidInput_SameAnswerAsMissing()
+    {
+        _courses.Setup(c => c.DeleteAsync(3, 2, 0, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CourseWriteResult(CourseWriteStatus.NotFound, 0));
+
+        var foreign = await Assert.ThrowsAsync<BusinessRuleException>(() => Service.DeleteAsync(Sessions.Teacher(2), 3, 0, Ct));
+        var negative = await Assert.ThrowsAsync<BusinessRuleException>(() => Service.DeleteAsync(Sessions.Teacher(2), 3, -1, Ct));
+        var none = await Assert.ThrowsAsync<BusinessRuleException>(() => Service.DeleteAsync(Sessions.Teacher(2), 0, 0, Ct));
+
+        Assert.All(new[] { foreign, negative, none }, e => Assert.Equal(Access.CourseNotFound, e.Message));
+        _courses.Verify(c => c.DeleteAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Once);
+        await Assert.ThrowsAsync<AccessDeniedException>(() => Service.DeleteAsync(Sessions.Student(), 3, 0, Ct));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => Service.UpdateAsync(Sessions.Student(), 3, "Ders", "Konu", null, Ct));
     }
 
     [Fact]
     public async Task WrongRole_IsDeniedAndAudited()
     {
-        await Assert.ThrowsAsync<AccessDeniedException>(() => Service.CreateAsync(Sessions.Student(), "Ders", "Konu", Ct));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => Service.CreateAsync(Sessions.Student(), "Ders", "Konu", null, Ct));
         await Assert.ThrowsAsync<AccessDeniedException>(() => Service.AddNoteAsync(Sessions.Student(), 3, "Not", Ct));
         await Assert.ThrowsAsync<AccessDeniedException>(() => Service.GetTeachingAsync(Sessions.Student(), Ct));
         await Assert.ThrowsAsync<AccessDeniedException>(() => Service.GetCatalogAsync(Sessions.Teacher(), Ct));

@@ -21,8 +21,22 @@ public sealed record StudentRecoveryState(
 /// <summary>A usable setup key as a given key is compared with it.</summary>
 public sealed record StoredSetupKey(int Id, byte[] KeyHash);
 
-/// <summary>A course with its teacher, as the lists show it.</summary>
-public sealed record CourseSummary(int Id, string Name, int TeacherId, string TeacherName, string? Topic);
+/// <summary>
+/// A course with its teacher, as the lists show it: its capacity (<see langword="null"/> for no limit)
+/// and the number of students with an active enrollment.
+/// </summary>
+public sealed record CourseSummary(
+    int Id,
+    string Name,
+    int TeacherId,
+    string TeacherName,
+    string? Topic,
+    int? Capacity = null,
+    int StudentCount = 0)
+{
+    /// <summary>Whether a new student can still join (no limit, or fewer students than seats).</summary>
+    public bool HasFreeSeat => Capacity is not { } capacity || StudentCount < capacity;
+}
 
 /// <summary>The public profile of a teacher.</summary>
 public sealed record TeacherProfile(int Id, string FullName, string Specialty);

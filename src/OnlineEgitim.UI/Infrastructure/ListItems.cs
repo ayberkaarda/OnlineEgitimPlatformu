@@ -1,3 +1,4 @@
+using System.Globalization;
 using OnlineEgitim.Domain.Entities;
 
 namespace OnlineEgitim.UI.Infrastructure;
@@ -11,7 +12,7 @@ internal enum CourseItemStyle
     /// <summary>"Ad / Eğitmen / Konu", the student's own courses.</summary>
     Mine,
 
-    /// <summary>"3 - Ad", the teacher's course list.</summary>
+    /// <summary>"3 - Ad (2/20 öğrenci)", the teacher's course list with its seats.</summary>
     Teaching,
 }
 
@@ -22,8 +23,10 @@ internal sealed record CourseItem(CourseSummary Course, CourseItemStyle Style)
     {
         CourseItemStyle.Catalog => $"{Course.Id} - {Course.Name} / {Course.TeacherName} / {Topic}",
         CourseItemStyle.Mine => $"{Course.Name} / {Course.TeacherName} / {Topic}",
-        _ => $"{Course.Id} - {Course.Name}",
+        _ => string.Create(CultureInfo.CurrentCulture, $"{Course.Id} - {Course.Name} ({Course.StudentCount}/{Seats} öğrenci)"),
     };
 
     private string Topic => string.IsNullOrWhiteSpace(Course.Topic) ? "-" : Course.Topic;
+
+    private string Seats => Course.Capacity is { } capacity ? capacity.ToString(CultureInfo.CurrentCulture) : "sınırsız";
 }

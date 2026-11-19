@@ -41,6 +41,10 @@ internal static class ValidationMessages
         CultureInfo.InvariantCulture,
         $"Konu en fazla {InputRules.TopicMaxLength} karakter olabilir.");
 
+    public static readonly string CapacityInvalid = string.Create(
+        CultureInfo.InvariantCulture,
+        $"Kontenjan 0 ile {InputRules.CourseCapacityMax} arasında olmalıdır; sınırsız kontenjan için boş bırakın.");
+
     public static readonly string NoteTooLong = string.Create(
         CultureInfo.InvariantCulture,
         $"Not en fazla {InputRules.NoteMaxLength} karakter olabilir.");
@@ -177,7 +181,7 @@ internal sealed class StudentNameInputValidator : AbstractValidator<StudentNameI
 
 /// <summary>
 /// A course, in this order: name and topic present, a name of at most 100 and a topic of at most 200
-/// characters, both without control characters.
+/// characters, both without control characters, and no capacity (no limit) or 0 to 1000 seats.
 /// </summary>
 internal sealed class CourseInputValidator : AbstractValidator<CourseInput>
 {
@@ -191,6 +195,8 @@ internal sealed class CourseInputValidator : AbstractValidator<CourseInput>
             .Must(n => InputRules.IsValidText(n, InputRules.CourseNameMaxLength)).WithMessage(ValidationMessages.CourseNameTooLong);
         RuleFor(c => c.Topic)
             .Must(t => InputRules.IsValidText(t, InputRules.TopicMaxLength)).WithMessage(ValidationMessages.TopicTooLong);
+        RuleFor(c => c.Capacity)
+            .Must(c => c is null or (>= 0 and <= InputRules.CourseCapacityMax)).WithMessage(ValidationMessages.CapacityInvalid);
     }
 }
 

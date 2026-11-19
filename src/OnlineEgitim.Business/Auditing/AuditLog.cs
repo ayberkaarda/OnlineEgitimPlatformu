@@ -57,6 +57,12 @@ public enum AuditEvent
 
     /// <summary>A registration used a name or e-mail address that is taken; no account was created.</summary>
     RegistrationNotCompleted = 14,
+
+    /// <summary>A teacher changed the name, topic or capacity of a course.</summary>
+    CourseUpdated = 15,
+
+    /// <summary>A teacher deleted a course; its active enrollments were closed.</summary>
+    CourseDeleted = 16,
 }
 
 /// <summary>Receives <see cref="AuditEvent"/>s.</summary>
@@ -84,6 +90,8 @@ public static class AuditCodes
         AuditEvent.AccountRecovered => "recovery.completed",
         AuditEvent.RecoveryFailed => "recovery.failed",
         AuditEvent.RegistrationNotCompleted => "auth.student.registration_not_completed",
+        AuditEvent.CourseUpdated => "course.updated",
+        AuditEvent.CourseDeleted => "course.deleted",
         _ => throw new ArgumentOutOfRangeException(nameof(auditEvent), auditEvent, "Unknown audit event."),
     };
 

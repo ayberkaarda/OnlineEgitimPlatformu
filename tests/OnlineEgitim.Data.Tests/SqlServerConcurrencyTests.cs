@@ -28,7 +28,7 @@ public sealed class SqlServerConcurrencyTests
         // Several rounds make it likely that the inserts really overlap.
         for (var round = 0; round < 4; round++)
         {
-            var courseId = await courses.CreateAsync(Teacher(DenizId), "Yarış " + round, "Konu", ct);
+            var courseId = await courses.CreateAsync(Teacher(DenizId), "Yarış " + round, "Konu", null, ct);
 
             var results = await RaceAsync(Contenders, () => service.EnrollAsync(Student(MertId), courseId, ct), ct);
 

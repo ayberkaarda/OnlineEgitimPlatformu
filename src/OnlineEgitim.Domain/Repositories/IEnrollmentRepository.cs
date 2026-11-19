@@ -2,12 +2,18 @@ using OnlineEgitim.Domain.Entities;
 
 namespace OnlineEgitim.Domain.Repositories;
 
-/// <summary>Which students joined which courses.</summary>
+/// <summary>
+/// Which students joined which courses. Every query counts and returns active enrollments of courses
+/// that are not deleted only.
+/// </summary>
 public interface IEnrollmentRepository
 {
-    /// <summary>Adds the student to the course.</summary>
-    /// <exception cref="AlreadyEnrolledException">The student already joined the course.</exception>
-    Task AddAsync(int studentId, int courseId, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Adds the student to the course in one transaction under the course's lock: the course must exist
+    /// and not be deleted, and the active enrollments are counted against its capacity while no other
+    /// enrollment, capacity change or deletion of the course can run.
+    /// </summary>
+    Task<EnrollmentStatus> AddAsync(int studentId, int courseId, CancellationToken cancellationToken = default);
 
     Task<bool> IsEnrolledAsync(int studentId, int courseId, CancellationToken cancellationToken = default);
 
@@ -20,21 +26,18 @@ public interface IEnrollmentRepository
     Task<int> CountStudentsAsync(int courseId, CancellationToken cancellationToken = default);
 }
 
-/// <summary>Raised when a student already joined a course.</summary>
-public sealed class AlreadyEnrolledException : Exception
+/// <summary>Outcome of <see cref="IEnrollmentRepository.AddAsync"/>.</summary>
+public enum EnrollmentStatus
 {
-    public AlreadyEnrolledException()
-        : base("The student already joined the course.")
-    {
-    }
+    /// <summary>The student is enrolled now.</summary>
+    Enrolled = 0,
 
-    public AlreadyEnrolledException(string message)
-        : base(message)
-    {
-    }
+    /// <summary>The student had an active enrollment already; nothing was written.</summary>
+    AlreadyEnrolled = 1,
 
-    public AlreadyEnrolledException(string message, Exception innerException)
-        : base(message, innerException)
-    {
-    }
+    /// <summary>The course does not exist or was deleted; nothing was written.</summary>
+    CourseNotFound = 2,
+
+    /// <summary>Every seat is taken (or the capacity is zero); nothing was written.</summary>
+    CourseFull = 3,
 }

@@ -23,7 +23,7 @@ public sealed class EnrollmentServiceTests
     public async Task Enroll_Twice_GetsTheOriginalMessage()
     {
         _courses.Setup(c => c.GetByIdAsync(3, It.IsAny<CancellationToken>())).ReturnsAsync(DenizCourse);
-        _enrollments.Setup(e => e.AddAsync(5, 3, It.IsAny<CancellationToken>())).ThrowsAsync(new AlreadyEnrolledException());
+        _enrollments.Setup(e => e.AddAsync(5, 3, It.IsAny<CancellationToken>())).ReturnsAsync(EnrollmentStatus.AlreadyEnrolled);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service.EnrollAsync(Sessions.Student(5), 3, Ct));
 
@@ -35,7 +35,7 @@ public sealed class EnrollmentServiceTests
     public async Task Enroll_UsesTheSessionsStudent()
     {
         _courses.Setup(c => c.GetByIdAsync(3, It.IsAny<CancellationToken>())).ReturnsAsync(DenizCourse);
-        _enrollments.Setup(e => e.AddAsync(5, 3, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        _enrollments.Setup(e => e.AddAsync(5, 3, It.IsAny<CancellationToken>())).ReturnsAsync(EnrollmentStatus.Enrolled);
 
         await Service.EnrollAsync(Sessions.Student(5), 3, Ct);
 
@@ -45,14 +45,26 @@ public sealed class EnrollmentServiceTests
     [Fact]
     public async Task Enroll_NoSelectionOrMissingCourse_IsRefusedWithoutAWrite()
     {
-        _courses.Setup(c => c.GetByIdAsync(99, It.IsAny<CancellationToken>())).ReturnsAsync((CourseSummary?)null);
+        _enrollments.Setup(e => e.AddAsync(1, 99, It.IsAny<CancellationToken>())).ReturnsAsync(EnrollmentStatus.CourseNotFound);
 
         var none = await Assert.ThrowsAsync<BusinessRuleException>(() => Service.EnrollAsync(Sessions.Student(), 0, Ct));
         var missing = await Assert.ThrowsAsync<BusinessRuleException>(() => Service.EnrollAsync(Sessions.Student(), 99, Ct));
 
         Assert.Equal(EnrollmentService.CourseRequired, none.Message);
         Assert.Equal(Access.CourseNotFound, missing.Message);
-        _enrollments.VerifyNoOtherCalls();
+        Assert.Equal([(AuditEvent.AccessDenied, (AccountRole?)AccountRole.Student)], _audit.Events);
+        _enrollments.Verify(e => e.AddAsync(It.IsAny<int>(), 0, It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Enroll_FullCourse_IsRefusedWithItsOwnMessageAndNoAudit()
+    {
+        _enrollments.Setup(e => e.AddAsync(5, 3, It.IsAny<CancellationToken>())).ReturnsAsync(EnrollmentStatus.CourseFull);
+
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service.EnrollAsync(Sessions.Student(5), 3, Ct));
+
+        Assert.Equal(EnrollmentService.CourseFull, error.Message);
+        Assert.Empty(_audit.Events);
     }
 
     [Fact]

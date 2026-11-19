@@ -59,6 +59,8 @@ public sealed class AuditTests
         { AuditEvent.AccountRecovered, 12, "recovery.completed" },
         { AuditEvent.RecoveryFailed, 13, "recovery.failed" },
         { AuditEvent.RegistrationNotCompleted, 14, "auth.student.registration_not_completed" },
+        { AuditEvent.CourseUpdated, 15, "course.updated" },
+        { AuditEvent.CourseDeleted, 16, "course.deleted" },
     };
 
     [Theory]

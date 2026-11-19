@@ -1,4 +1,4 @@
-﻿namespace OnlineEgitim.UI
+namespace OnlineEgitim.UI
 {
     partial class KursEklemeForm
     {
@@ -37,6 +37,10 @@
             this.txtOgretici = new System.Windows.Forms.TextBox();
             this.txtUzmanlik = new System.Windows.Forms.TextBox();
             this.label4 = new System.Windows.Forms.Label();
+            this.label5 = new System.Windows.Forms.Label();
+            this.nudKontenjan = new System.Windows.Forms.NumericUpDown();
+            this.chkSinirsiz = new System.Windows.Forms.CheckBox();
+            ((System.ComponentModel.ISupportInitialize)(this.nudKontenjan)).BeginInit();
             this.SuspendLayout();
             // 
             // label1
@@ -87,11 +91,11 @@
             // 
             // btnEkle
             // 
-            this.btnEkle.Location = new System.Drawing.Point(141, 180);
+            this.btnEkle.Location = new System.Drawing.Point(141, 222);
             this.btnEkle.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
             this.btnEkle.Name = "btnEkle";
             this.btnEkle.Size = new System.Drawing.Size(100, 28);
-            this.btnEkle.TabIndex = 6;
+            this.btnEkle.TabIndex = 7;
             this.btnEkle.Text = "Kurs Ekle";
             this.btnEkle.UseVisualStyleBackColor = true;
             this.btnEkle.Click += new System.EventHandler(this.btnEkle_Click);
@@ -122,11 +126,44 @@
             this.label4.TabIndex = 8;
             this.label4.Text = "Uzmanlık Alanı";
             // 
+            // label5
+            // 
+            this.label5.AutoSize = true;
+            this.label5.Location = new System.Drawing.Point(40, 187);
+            this.label5.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
+            this.label5.Name = "label5";
+            this.label5.Size = new System.Drawing.Size(67, 16);
+            this.label5.TabIndex = 10;
+            this.label5.Text = "Kontenjan";
+            // 
+            // nudKontenjan
+            // 
+            this.nudKontenjan.Location = new System.Drawing.Point(121, 185);
+            this.nudKontenjan.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
+            this.nudKontenjan.Name = "nudKontenjan";
+            this.nudKontenjan.Size = new System.Drawing.Size(70, 22);
+            this.nudKontenjan.TabIndex = 5;
+            // 
+            // chkSinirsiz
+            // 
+            this.chkSinirsiz.AutoSize = true;
+            this.chkSinirsiz.Location = new System.Drawing.Point(201, 186);
+            this.chkSinirsiz.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
+            this.chkSinirsiz.Name = "chkSinirsiz";
+            this.chkSinirsiz.Size = new System.Drawing.Size(76, 20);
+            this.chkSinirsiz.TabIndex = 6;
+            this.chkSinirsiz.Text = "Sınırsız";
+            this.chkSinirsiz.UseVisualStyleBackColor = true;
+            this.chkSinirsiz.CheckedChanged += new System.EventHandler(this.chkSinirsiz_CheckedChanged);
+            // 
             // kursEkleme
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(385, 241);
+            this.ClientSize = new System.Drawing.Size(385, 272);
+            this.Controls.Add(this.chkSinirsiz);
+            this.Controls.Add(this.nudKontenjan);
+            this.Controls.Add(this.label5);
             this.Controls.Add(this.txtUzmanlik);
             this.Controls.Add(this.label4);
             this.Controls.Add(this.txtOgretici);
@@ -140,6 +177,7 @@
             this.Name = "KursEklemeForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
             this.Text = "Kurs Ekle";
+            ((System.ComponentModel.ISupportInitialize)(this.nudKontenjan)).EndInit();
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -156,5 +194,8 @@
         private System.Windows.Forms.TextBox txtOgretici;
         private System.Windows.Forms.TextBox txtUzmanlik;
         private System.Windows.Forms.Label label4;
+        private System.Windows.Forms.Label label5;
+        private System.Windows.Forms.NumericUpDown nudKontenjan;
+        private System.Windows.Forms.CheckBox chkSinirsiz;
     }
 }

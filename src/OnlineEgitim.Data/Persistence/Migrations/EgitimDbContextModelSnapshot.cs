@@ -31,6 +31,14 @@ namespace OnlineEgitim.Data.Persistence.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<int?>("Capacity")
+                        .HasColumnType("int")
+                        .HasColumnName("Kontenjan");
+
+                    b.Property<DateTime?>("DeletedUtc")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("SilinmeTarihi");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -51,7 +59,10 @@ namespace OnlineEgitim.Data.Persistence.Migrations
 
                     b.HasIndex(new[] { "TeacherId" }, "IX_Dersler_EgitmenID");
 
-                    b.ToTable("Dersler", (string)null);
+                    b.ToTable("Dersler", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Dersler_Kontenjan", "[Kontenjan] IS NULL OR [Kontenjan] >= 0");
+                        });
                 });
 
             modelBuilder.Entity("OnlineEgitim.Domain.Entities.CourseNote", b =>
@@ -90,6 +101,10 @@ namespace OnlineEgitim.Data.Persistence.Migrations
                     b.Property<int>("CourseId")
                         .HasColumnType("int")
                         .HasColumnName("DersID");
+
+                    b.Property<DateTime?>("LeftUtc")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("AyrilmaTarihi");
 
                     b.HasKey("StudentId", "CourseId")
                         .HasName("PK_OgrenciKurslar");

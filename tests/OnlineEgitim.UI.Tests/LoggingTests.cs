@@ -212,7 +212,7 @@ public sealed partial class LoggingTests : IDisposable
         app.Clock.Advance(LoginPolicy.LockoutDuration + TimeSpan.FromMinutes(1));
         var student = await auth.SignInStudentAsync(StudentName, StudentPassword, Ct);
 
-        var courseId = await courses.CreateAsync(teacher, CourseName, Topic, Ct);
+        var courseId = await courses.CreateAsync(teacher, CourseName, Topic, null, Ct);
         await courses.AddNoteAsync(teacher, courseId, NoteContent, Ct);
         await app.AttemptAsync(() => courses.AddNoteAsync(student, courseId, NoteContent, Ct)); // wrong role
         await app.AttemptAsync(() => courses.AddNoteAsync(teacher, courseId + 100, NoteContent, Ct)); // not owned

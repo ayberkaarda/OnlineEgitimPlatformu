@@ -27,6 +27,7 @@ internal sealed class EnrollmentService(
 {
     internal const string CourseRequired = "Lütfen bir ders seçiniz.";
     internal const string AlreadyEnrolled = "Bu dersi zaten seçtiniz.";
+    internal const string CourseFull = "Bu dersin kontenjanı dolu.";
 
     public async Task EnrollAsync(UserSession session, int courseId, CancellationToken cancellationToken = default)
     {
@@ -37,23 +38,22 @@ internal sealed class EnrollmentService(
             throw new BusinessRuleException(CourseRequired);
         }
 
-        if (await courses.GetByIdAsync(courseId, cancellationToken).ConfigureAwait(false) is null)
+        // The repository decides everything in one transaction under the course's lock: the course
+        // exists, the student is not in it yet and a seat is free. The primary key (student, course)
+        // stays the last guard against a double enrollment.
+        var status = await enrollments.AddAsync(session.UserId, courseId, cancellationToken).ConfigureAwait(false);
+        switch (status)
         {
-            throw Access.CourseNotFoundFor(session, audit);
+            case EnrollmentStatus.Enrolled:
+                audit.Record(AuditEvent.Enrolled, AccountRole.Student);
+                return;
+            case EnrollmentStatus.AlreadyEnrolled:
+                throw new BusinessRuleException(AlreadyEnrolled);
+            case EnrollmentStatus.CourseFull:
+                throw new BusinessRuleException(CourseFull);
+            default:
+                throw Access.CourseNotFoundFor(session, audit);
         }
-
-        try
-        {
-            // The primary key (student, course) is what prevents double enrollments under concurrency;
-            // the repository turns its violation into AlreadyEnrolledException.
-            await enrollments.AddAsync(session.UserId, courseId, cancellationToken).ConfigureAwait(false);
-        }
-        catch (AlreadyEnrolledException ex)
-        {
-            throw new BusinessRuleException(AlreadyEnrolled, ex);
-        }
-
-        audit.Record(AuditEvent.Enrolled, AccountRole.Student);
     }
 
     public Task<IReadOnlyList<CourseSummary>> GetMyCoursesAsync(UserSession session, CancellationToken cancellationToken = default)

@@ -25,6 +25,8 @@ namespace OnlineEgitim.UI
             this.label2 = new System.Windows.Forms.Label();
             this.btnYeniKurs = new System.Windows.Forms.Button();
             this.btnKurtarmaKodu = new System.Windows.Forms.Button();
+            this.btnDuzenle = new System.Windows.Forms.Button();
+            this.btnSil = new System.Windows.Forms.Button();
             this.pictureBox1 = new System.Windows.Forms.PictureBox();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).BeginInit();
             this.SuspendLayout();
@@ -42,7 +44,7 @@ namespace OnlineEgitim.UI
             // 
             // txtNotEkle
             // 
-            this.txtNotEkle.Location = new System.Drawing.Point(16, 356);
+            this.txtNotEkle.Location = new System.Drawing.Point(16, 395);
             this.txtNotEkle.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
             this.txtNotEkle.Multiline = true;
             this.txtNotEkle.Name = "txtNotEkle";
@@ -51,7 +53,7 @@ namespace OnlineEgitim.UI
             // 
             // btnNotEkle
             // 
-            this.btnNotEkle.Location = new System.Drawing.Point(16, 426);
+            this.btnNotEkle.Location = new System.Drawing.Point(16, 460);
             this.btnNotEkle.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
             this.btnNotEkle.Name = "btnNotEkle";
             this.btnNotEkle.Size = new System.Drawing.Size(147, 37);
@@ -90,7 +92,7 @@ namespace OnlineEgitim.UI
             // 
             // btnYeniKurs
             // 
-            this.btnYeniKurs.Location = new System.Drawing.Point(19, 305);
+            this.btnYeniKurs.Location = new System.Drawing.Point(16, 305);
             this.btnYeniKurs.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
             this.btnYeniKurs.Name = "btnYeniKurs";
             this.btnYeniKurs.Size = new System.Drawing.Size(147, 37);
@@ -101,7 +103,7 @@ namespace OnlineEgitim.UI
             // 
             // btnKurtarmaKodu
             // 
-            this.btnKurtarmaKodu.Location = new System.Drawing.Point(176, 305);
+            this.btnKurtarmaKodu.Location = new System.Drawing.Point(16, 348);
             this.btnKurtarmaKodu.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
             this.btnKurtarmaKodu.Name = "btnKurtarmaKodu";
             this.btnKurtarmaKodu.Size = new System.Drawing.Size(170, 37);
@@ -110,9 +112,31 @@ namespace OnlineEgitim.UI
             this.btnKurtarmaKodu.UseVisualStyleBackColor = true;
             this.btnKurtarmaKodu.Click += new System.EventHandler(this.btnKurtarmaKodu_Click);
             // 
+            // btnDuzenle
+            // 
+            this.btnDuzenle.Location = new System.Drawing.Point(169, 305);
+            this.btnDuzenle.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
+            this.btnDuzenle.Name = "btnDuzenle";
+            this.btnDuzenle.Size = new System.Drawing.Size(147, 37);
+            this.btnDuzenle.TabIndex = 10;
+            this.btnDuzenle.Text = "Kursu Düzenle";
+            this.btnDuzenle.UseVisualStyleBackColor = true;
+            this.btnDuzenle.Click += new System.EventHandler(this.btnDuzenle_Click);
+            // 
+            // btnSil
+            // 
+            this.btnSil.Location = new System.Drawing.Point(322, 305);
+            this.btnSil.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
+            this.btnSil.Name = "btnSil";
+            this.btnSil.Size = new System.Drawing.Size(147, 37);
+            this.btnSil.TabIndex = 11;
+            this.btnSil.Text = "Kursu Sil";
+            this.btnSil.UseVisualStyleBackColor = true;
+            this.btnSil.Click += new System.EventHandler(this.btnSil_Click);
+            // 
             // pictureBox1
             // 
-            this.pictureBox1.Location = new System.Drawing.Point(504, 305);
+            this.pictureBox1.Location = new System.Drawing.Point(504, 330);
             this.pictureBox1.Name = "pictureBox1";
             this.pictureBox1.Size = new System.Drawing.Size(286, 171);
             this.pictureBox1.TabIndex = 8;
@@ -123,7 +147,9 @@ namespace OnlineEgitim.UI
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.SystemColors.ActiveCaption;
-            this.ClientSize = new System.Drawing.Size(820, 488);
+            this.ClientSize = new System.Drawing.Size(820, 515);
+            this.Controls.Add(this.btnSil);
+            this.Controls.Add(this.btnDuzenle);
             this.Controls.Add(this.pictureBox1);
             this.Controls.Add(this.btnKurtarmaKodu);
             this.Controls.Add(this.btnYeniKurs);
@@ -151,7 +177,9 @@ namespace OnlineEgitim.UI
         private System.Windows.Forms.Label label1;
         private System.Windows.Forms.Label label2;
         private System.Windows.Forms.Button btnKurtarmaKodu;
-        private System.Windows.Forms.Button btnYeniKurs; // Yeni buton tanımlandı
+        private System.Windows.Forms.Button btnYeniKurs;
+        private System.Windows.Forms.Button btnDuzenle;
+        private System.Windows.Forms.Button btnSil;
         private System.Windows.Forms.PictureBox pictureBox1;
     }
 }

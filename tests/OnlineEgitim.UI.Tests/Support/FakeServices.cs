@@ -85,12 +85,35 @@ internal sealed class ControlledCourseService : ICourseService
             ? Task.FromResult(details)
             : Task.FromException<CourseDetails>(new BusinessRuleException("Ders bulunamadı."));
 
-    public Task<int> CreateAsync(UserSession session, string? name, string? topic, CancellationToken cancellationToken = default)
+    public int? LastCapacity { get; private set; }
+
+    public List<string> Writes { get; } = [];
+
+    public Task<int> CreateAsync(UserSession session, string? name, string? topic, int? capacity, CancellationToken cancellationToken = default)
     {
         CreateCalls++;
+        LastCapacity = capacity;
         _create = new TaskCompletionSource<int>();
         return _create.Task;
     }
+
+    public Task UpdateAsync(UserSession session, int courseId, string? name, string? topic, int? capacity, CancellationToken cancellationToken = default)
+    {
+        Writes.Add(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"update:{courseId}:{name}:{capacity?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "-"}"));
+        _write = new TaskCompletionSource();
+        return _write.Task;
+    }
+
+    public Task DeleteAsync(UserSession session, int courseId, int confirmedStudents, CancellationToken cancellationToken = default)
+    {
+        Writes.Add(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"delete:{courseId}:{confirmedStudents}"));
+        _write = new TaskCompletionSource();
+        return _write.Task;
+    }
+
+    public void CompleteWrite() => _write.SetResult();
+
+    private TaskCompletionSource _write = new();
 
     public Task AddNoteAsync(UserSession session, int courseId, string? content, CancellationToken cancellationToken = default)
     {

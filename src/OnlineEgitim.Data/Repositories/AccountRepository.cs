@@ -222,8 +222,8 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
         var updated = await db.Students
             .Where(s => s.FullName == studentName
                 && s.PasswordFormat == PasswordFormat.None
-                && db.Enrollments.Any(e => e.StudentId == s.Id
-                    && db.Courses.Any(c => c.Id == e.CourseId && c.TeacherId == teacherId)))
+                && db.Enrollments.Any(e => e.StudentId == s.Id && e.LeftUtc == null
+                    && db.Courses.Any(c => c.Id == e.CourseId && c.TeacherId == teacherId && c.DeletedUtc == null)))
             .ExecuteUpdateAsync(
                 s => s
                     .SetProperty(a => a.RecoveryCodeHash, codeHash)
@@ -390,7 +390,7 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
         var id = await db.Students
             .Where(s => s.FullName == fullName
                 && s.PasswordFormat == PasswordFormat.None
-                && !db.Enrollments.Any(e => e.StudentId == s.Id))
+                && !db.Enrollments.Any(e => e.StudentId == s.Id && e.LeftUtc == null && db.Courses.Any(c => c.Id == e.CourseId && c.DeletedUtc == null)))
             .Select(s => (int?)s.Id)
             .SingleOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -402,7 +402,7 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
         var updated = await db.Students
             .Where(s => s.Id == id
                 && s.PasswordFormat == PasswordFormat.None
-                && !db.Enrollments.Any(e => e.StudentId == s.Id))
+                && !db.Enrollments.Any(e => e.StudentId == s.Id && e.LeftUtc == null && db.Courses.Any(c => c.Id == e.CourseId && c.DeletedUtc == null)))
             .ExecuteUpdateAsync(
                 s => s
                     .SetProperty(a => a.PasswordHash, newPasswordHash)
