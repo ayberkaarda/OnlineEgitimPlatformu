@@ -17,6 +17,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OnlineEgitim.Data.Tests", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OnlineEgitim.UI", "src\OnlineEgitim.UI\OnlineEgitim.UI.csproj", "{8A31B5E3-793C-4EBC-A0A4-C5B83DF1CF1C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OnlineEgitim.Business.Tests", "tests\OnlineEgitim.Business.Tests\OnlineEgitim.Business.Tests.csproj", "{5BB3FA89-9D94-4ECB-A31D-F8A532B7EFD9}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -87,6 +89,18 @@ Global
 		{8A31B5E3-793C-4EBC-A0A4-C5B83DF1CF1C}.Release|x64.Build.0 = Release|Any CPU
 		{8A31B5E3-793C-4EBC-A0A4-C5B83DF1CF1C}.Release|x86.ActiveCfg = Release|Any CPU
 		{8A31B5E3-793C-4EBC-A0A4-C5B83DF1CF1C}.Release|x86.Build.0 = Release|Any CPU
+		{5BB3FA89-9D94-4ECB-A31D-F8A532B7EFD9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5BB3FA89-9D94-4ECB-A31D-F8A532B7EFD9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5BB3FA89-9D94-4ECB-A31D-F8A532B7EFD9}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{5BB3FA89-9D94-4ECB-A31D-F8A532B7EFD9}.Debug|x64.Build.0 = Debug|Any CPU
+		{5BB3FA89-9D94-4ECB-A31D-F8A532B7EFD9}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{5BB3FA89-9D94-4ECB-A31D-F8A532B7EFD9}.Debug|x86.Build.0 = Debug|Any CPU
+		{5BB3FA89-9D94-4ECB-A31D-F8A532B7EFD9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5BB3FA89-9D94-4ECB-A31D-F8A532B7EFD9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5BB3FA89-9D94-4ECB-A31D-F8A532B7EFD9}.Release|x64.ActiveCfg = Release|Any CPU
+		{5BB3FA89-9D94-4ECB-A31D-F8A532B7EFD9}.Release|x64.Build.0 = Release|Any CPU
+		{5BB3FA89-9D94-4ECB-A31D-F8A532B7EFD9}.Release|x86.ActiveCfg = Release|Any CPU
+		{5BB3FA89-9D94-4ECB-A31D-F8A532B7EFD9}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -97,6 +111,7 @@ Global
 		{4E6F6871-5EDC-435D-B811-23E93FF1528F} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{760E18BE-7AA5-4B4C-81F4-6251B2D85124} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{8A31B5E3-793C-4EBC-A0A4-C5B83DF1CF1C} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{5BB3FA89-9D94-4ECB-A31D-F8A532B7EFD9} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {1CFFE57D-E7A5-44D3-A5C9-42749E54AB98}
