@@ -150,6 +150,57 @@ internal sealed class GlyphBadge : Control, IThemeAware
     }
 }
 
+/// <summary>
+/// A title docked along the top of a card that wraps onto more lines when the card is narrow (large text on
+/// a small screen) instead of running past the card's edge; its height follows its width.
+/// </summary>
+internal sealed class HeadingLabel : Label
+{
+    private const TextFormatFlags Flags = TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix | TextFormatFlags.TextBoxControl;
+
+    public HeadingLabel()
+    {
+        AutoSize = false;
+        UseMnemonic = false;
+    }
+
+    public override Size GetPreferredSize(Size proposedSize)
+    {
+        var width = proposedSize.Width is > 1 and < int.MaxValue / 2 ? proposedSize.Width : Width;
+        return new Size(width, HeightFor(width));
+    }
+
+    protected override void OnSizeChanged(EventArgs e)
+    {
+        base.OnSizeChanged(e);
+        Fit();
+    }
+
+    protected override void OnTextChanged(EventArgs e)
+    {
+        base.OnTextChanged(e);
+        Fit();
+    }
+
+    protected override void OnFontChanged(EventArgs e)
+    {
+        base.OnFontChanged(e);
+        Fit();
+    }
+
+    private int HeightFor(int width) =>
+        TextRenderer.MeasureText(Text, Font, new Size(Math.Max(1, width - Padding.Horizontal), int.MaxValue), Flags).Height + Padding.Vertical;
+
+    private void Fit()
+    {
+        var height = HeightFor(Width);
+        if (Width > 0 && Height != height)
+        {
+            Height = height;
+        }
+    }
+}
+
 /// <summary>A short horizontal mark in the warm brand color, under a title.</summary>
 internal sealed class BrandRule : Control
 {

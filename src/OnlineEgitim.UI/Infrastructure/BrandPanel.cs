@@ -83,11 +83,43 @@ internal sealed class BrandPanel : Panel
             list.Controls.Add(label, 1, i);
         }
 
-        var stack = FormLayout.Stack("brandStack", logo, name, rule, line, list);
+        _stack = FormLayout.Stack("brandStack", logo, name, rule, line, list);
         logo.Dock = DockStyle.None;
         rule.Dock = DockStyle.None;
         logo.Anchor = rule.Anchor = AnchorStyles.Left | AnchorStyles.Top;
-        Controls.Add(stack);
+        Controls.Add(_stack);
+    }
+
+    // Null while the constructor still sets up the panel (its own layout runs before the stack exists).
+    private readonly TableLayoutPanel? _stack;
+
+    /// <summary>
+    /// A docked stack takes no part in automatic scrolling, so the scroll range is set to the height the stack
+    /// needs at the panel's width: on a short window the points scroll instead of being cut off.
+    /// </summary>
+    protected override void OnLayout(LayoutEventArgs levent)
+    {
+        base.OnLayout(levent);
+        if (_stack is null)
+        {
+            return;
+        }
+
+        // The stack has just been laid out at the panel's width, so its height is what it needs. A scroll bar that
+        // appears takes width and makes the text wrap onto more lines, so the stack is laid out again until the
+        // range holds still.
+        for (var pass = 0; pass < 3; pass++)
+        {
+            var needed = _stack.Height + Padding.Vertical;
+            var minimum = needed > ClientSize.Height ? new Size(0, needed) : Size.Empty;
+            if (AutoScrollMinSize == minimum)
+            {
+                return;
+            }
+
+            AutoScrollMinSize = minimum;
+            base.OnLayout(levent);
+        }
     }
 
     protected override void OnPaint(PaintEventArgs e)

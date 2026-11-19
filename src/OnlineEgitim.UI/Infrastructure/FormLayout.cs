@@ -69,10 +69,16 @@ internal static class FormLayout
         card.Controls.Add(content);
         if (title is not null)
         {
-            var heading = SectionTitle(title);
-            heading.Name = name + "Title";
-            heading.Dock = DockStyle.Top;
-            heading.Padding = new Padding(0, 0, 0, Spacing.M);
+            var heading = new HeadingLabel
+            {
+                Name = name + "Title",
+                Text = title,
+                Font = Theme.Fonts.Subtitle,
+                ForeColor = Theme.Current.Text,
+                Dock = DockStyle.Top,
+                Padding = new Padding(0, 0, 0, Spacing.M),
+                Margin = Padding.Empty,
+            };
             card.Controls.Add(heading);
         }
 
