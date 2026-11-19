@@ -36,6 +36,8 @@ internal sealed class DatabaseInitializer(
         {
             if (db.Database.IsSqlServer())
             {
+                // A database from the original application has the tables but no migration history.
+                await LegacySchemaUpgrader.UpgradeIfLegacyAsync(db, cancellationToken).ConfigureAwait(false);
                 await db.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
             }
             else
