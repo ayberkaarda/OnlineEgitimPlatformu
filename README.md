@@ -92,13 +92,19 @@ database is created and migrated automatically on startup.
 
 ## 🖼️ Screenshots
 
-The images below show the screens of the original application; the design work will replace them.
+The screens are drawn offscreen from an invented school (made-up people, example.com addresses, courses and a
+visibly sample code), so they show no real data. Each image links to its 2x version. To draw them again:
+`dotnet run --project tools/Screenshots -c Release -- screenshots`.
 
 | | |
 |---|---|
-| ![Student sign-in](screenshots/ogrenci_giris.png)<br>**Student sign-in** ("Öğrenci Girişi") | ![Student panel](screenshots/ogrenci_panel.png)<br>**Student panel** ("Öğrenci Paneli") |
-| ![Course details](screenshots/kurs_detaylari.png)<br>**Course details** ("Kurs Detayları") | ![My courses](screenshots/kurslarim.png)<br>**My courses** ("Kurslarım") |
-| ![Teacher sign-in](screenshots/ogretmen_giris.png)<br>**Teacher sign-in** ("Öğretmen Giriş") | ![Teacher panel](screenshots/ogretmen_panel.png)<br>**Teacher panel** ("Öğretmen Paneli") |
+| [![Student sign-in](screenshots/ogrenci-girisi.png)](screenshots/ogrenci-girisi-2x.png)<br>**Student sign-in** ("Öğrenci girişi") | [![Registration](screenshots/ogrenci-kaydi.png)](screenshots/ogrenci-kaydi-2x.png)<br>**Registration** ("Öğrenci kaydı") |
+| [![Student panel](screenshots/ogrenci-paneli.png)](screenshots/ogrenci-paneli-2x.png)<br>**Student panel** ("Öğrenci paneli"): search, catalogue with seats and status, after joining a course | [![Course details](screenshots/kurs-detayi.png)](screenshots/kurs-detayi-2x.png)<br>**Course details** ("Kurs detayları") with the notes |
+| [![My courses](screenshots/kurslarim.png)](screenshots/kurslarim-2x.png)<br>**My courses** ("Kurslarım") | [![Confirmation](screenshots/onay-penceresi.png)](screenshots/onay-penceresi-2x.png)<br>**Confirmation** ("Onay") before leaving a course |
+| [![Teacher and administrator sign-in](screenshots/ogretmen-girisi.png)](screenshots/ogretmen-girisi-2x.png)<br>**Teacher and administrator sign-in** ("Öğretmen / yönetici girişi") | [![Teacher panel](screenshots/ogretmen-paneli.png)](screenshots/ogretmen-paneli-2x.png)<br>**Teacher panel** ("Öğretmen paneli"): courses, students, notes |
+| [![Course editor](screenshots/kurs-duzenleme.png)](screenshots/kurs-duzenleme-2x.png)<br>**Course editor** ("Kursu Düzenle") with the capacity | [![Recovery code](screenshots/kurtarma-kodu.png)](screenshots/kurtarma-kodu-2x.png)<br>**Recovery code** ("Kurtarma kodu") for a student, shown once |
+| [![Administrator panel](screenshots/yonetici-paneli.png)](screenshots/yonetici-paneli-2x.png)<br>**Administrator panel** ("Yönetici paneli") after a reset code | [![Set password with a code](screenshots/hesap-kurtarma.png)](screenshots/hesap-kurtarma-2x.png)<br>**Set password with a code** ("Kodla şifre belirle") |
+| [![First-run setup](screenshots/ilk-kurulum.png)](screenshots/ilk-kurulum-2x.png)<br>**First-run setup** ("İlk kurulum") with the setup key | [![Change password](screenshots/sifre-degistirme.png)](screenshots/sifre-degistirme-2x.png)<br>**Change password** ("Şifremi değiştir") |
 
 ---
 

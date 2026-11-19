@@ -90,13 +90,19 @@ yapılır, veritabanı açılışta otomatik oluşturulur ve güncellenir.
 
 ## 🖼️ Ekran Görüntüleri
 
-Aşağıdaki görüntüler özgün uygulamanın ekranlarıdır; tasarım çalışması bunları yenileyecek.
+Ekranlar uydurma bir okulla (uydurma kişiler, example.com adresleri, kurslar ve açıkça örnek bir kod) pencere
+açılmadan çizilir; gerçek veri içermez. Her görsel 2x sürümüne bağlanır. Yeniden çizmek için:
+`dotnet run --project tools/Screenshots -c Release -- screenshots`.
 
 | | |
 |---|---|
-| ![Öğrenci girişi](screenshots/ogrenci_giris.png)<br>**Öğrenci girişi** ("Öğrenci Girişi") | ![Öğrenci paneli](screenshots/ogrenci_panel.png)<br>**Öğrenci paneli** ("Öğrenci Paneli") |
-| ![Kurs detayları](screenshots/kurs_detaylari.png)<br>**Kurs detayları** ("Kurs Detayları") | ![Kurslarım](screenshots/kurslarim.png)<br>**Kurslarım** ("Kurslarım") |
-| ![Öğretmen girişi](screenshots/ogretmen_giris.png)<br>**Öğretmen girişi** ("Öğretmen Giriş") | ![Öğretmen paneli](screenshots/ogretmen_panel.png)<br>**Öğretmen paneli** ("Öğretmen Paneli") |
+| [![Öğrenci girişi](screenshots/ogrenci-girisi.png)](screenshots/ogrenci-girisi-2x.png)<br>**Öğrenci girişi** | [![Öğrenci kaydı](screenshots/ogrenci-kaydi.png)](screenshots/ogrenci-kaydi-2x.png)<br>**Öğrenci kaydı** |
+| [![Öğrenci paneli](screenshots/ogrenci-paneli.png)](screenshots/ogrenci-paneli-2x.png)<br>**Öğrenci paneli**: arama, kontenjan ve durumuyla katalog, bir kursa kaydolduktan sonra | [![Kurs detayları](screenshots/kurs-detayi.png)](screenshots/kurs-detayi-2x.png)<br>**Kurs detayları** ve notlar |
+| [![Kurslarım](screenshots/kurslarim.png)](screenshots/kurslarim-2x.png)<br>**Kurslarım** | [![Onay](screenshots/onay-penceresi.png)](screenshots/onay-penceresi-2x.png)<br>Dersten ayrılmadan önce **onay** |
+| [![Öğretmen / yönetici girişi](screenshots/ogretmen-girisi.png)](screenshots/ogretmen-girisi-2x.png)<br>**Öğretmen / yönetici girişi** | [![Öğretmen paneli](screenshots/ogretmen-paneli.png)](screenshots/ogretmen-paneli-2x.png)<br>**Öğretmen paneli**: kurslar, öğrenciler, notlar |
+| [![Kursu düzenle](screenshots/kurs-duzenleme.png)](screenshots/kurs-duzenleme-2x.png)<br>**Kursu düzenle**, kontenjanla | [![Kurtarma kodu](screenshots/kurtarma-kodu.png)](screenshots/kurtarma-kodu-2x.png)<br>Öğrenci için **kurtarma kodu**, bir kez gösterilir |
+| [![Yönetici paneli](screenshots/yonetici-paneli.png)](screenshots/yonetici-paneli-2x.png)<br>Sıfırlama kodundan sonra **yönetici paneli** | [![Kodla şifre belirle](screenshots/hesap-kurtarma.png)](screenshots/hesap-kurtarma-2x.png)<br>**Kodla şifre belirle** |
+| [![İlk kurulum](screenshots/ilk-kurulum.png)](screenshots/ilk-kurulum-2x.png)<br>Kurulum anahtarıyla **ilk kurulum** | [![Şifremi değiştir](screenshots/sifre-degistirme.png)](screenshots/sifre-degistirme-2x.png)<br>**Şifremi değiştir** |
 
 ---
 
