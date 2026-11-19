@@ -3,6 +3,7 @@ using OnlineEgitim.Business.Services;
 using OnlineEgitim.Business.Validation;
 using OnlineEgitim.Domain.Entities;
 using OnlineEgitim.UI.Infrastructure;
+using OnlineEgitim.UI.Theming;
 
 namespace OnlineEgitim.UI
 {
@@ -11,33 +12,37 @@ namespace OnlineEgitim.UI
     /// student registration and to setting a password with a code.
     /// Closes with <see cref="DialogResult.OK"/> and <see cref="Session"/> set once someone signed in.
     /// </summary>
-    public partial class GirisForm : Form
+    public sealed class GirisForm : AppDialog
     {
         private readonly IAuthService _auth;
         private readonly IFormFactory _forms;
         private readonly ExclusiveOperation _signIn = new();
         private SetupStage _stage = SetupStage.Completed;
 
+        private readonly TextBox txtAd = new() { Name = nameof(txtAd), MaxLength = InputRules.PersonNameMaxLength };
+        private readonly TextBox txtSifre = new() { Name = nameof(txtSifre), MaxLength = PasswordPolicy.SignInMaxLength, UseSystemPasswordChar = true };
+        private readonly ThemedButton btnOgrenciGiris = FormLayout.Button(nameof(btnOgrenciGiris), "Giriş Yap", ButtonKind.Primary);
+        private readonly ThemedButton btnKayit = FormLayout.Button(nameof(btnKayit), "Kayıt ol", ButtonKind.Secondary, Glyphs.AddPerson);
+        private readonly ThemedButton btnKurtarma = FormLayout.Button(nameof(btnKurtarma), "Kodla şifre belirle", ButtonKind.Subtle, Glyphs.Key);
+        private readonly ThemedButton btnKurulum = FormLayout.Button(nameof(btnKurulum), "İlk yönetici kurulumu (kurulum anahtarı)", ButtonKind.Subtle, Glyphs.Admin);
+        private readonly ThemedButton btnOgretmenGiris = FormLayout.Button(nameof(btnOgretmenGiris), "Öğretmen / yönetici girişi", ButtonKind.Subtle, Glyphs.Person);
+
         public GirisForm(IAuthService auth, IFormFactory forms)
+            : base("Giriş", string.Empty, string.Empty, new Size(860, 540), new Size(760, 500), header: false)
         {
             ArgumentNullException.ThrowIfNull(auth);
             ArgumentNullException.ThrowIfNull(forms);
 
             _auth = auth;
             _forms = forms;
-            Prompts = new MessageBoxPrompts(this);
-
-            InitializeComponent();
-            Icon = AppAssets.Icon;
-            Text = AppText.Title + " - " + Text;
-            pictureBox1.Image = AppAssets.Background;
-            pictureBox1.SizeMode = PictureBoxSizeMode.Zoom;
-            pictureBox2.Image = AppAssets.Logo;
-            pictureBox2.SizeMode = PictureBoxSizeMode.Zoom;
-            txtAd.MaxLength = InputRules.PersonNameMaxLength;
-            txtSifre.MaxLength = PasswordPolicy.SignInMaxLength;
-            AcceptButton = btnOgrenciGiris;
+            BuildLayout();
             Stage = SetupStage.Completed;
+
+            btnOgrenciGiris.Click += async (_, _) => await SignInAndCloseAsync();
+            btnOgretmenGiris.Click += (_, _) => OpenStaffSignIn();
+            btnKayit.Click += (_, _) => OpenRegistration();
+            btnKurtarma.Click += (_, _) => OpenRecovery();
+            btnKurulum.Click += (_, _) => OpenSetup();
         }
 
         /// <summary>The signed-in student, teacher or administrator, once the form closed with OK.</summary>
@@ -45,7 +50,7 @@ namespace OnlineEgitim.UI
         public UserSession? Session { get; private set; }
 
         /// <summary>
-        /// Where the setup of the database stands. The link to the first administrator's setup (with the
+        /// Where the setup of the database stands. The way to the first administrator's setup (with the
         /// setup key) and the recovery with the setup key are offered only while no teacher or
         /// administrator can sign in with a password. The database decides again when the key is used.
         /// </summary>
@@ -56,19 +61,24 @@ namespace OnlineEgitim.UI
             set
             {
                 _stage = value;
-                lnkKurulum.Visible = OffersFirstAdminSetup;
+                FormLayout.SetShown(btnKurulum, OffersFirstAdminSetup);
             }
         }
 
-        /// <summary>Whether the link to the first administrator's setup (with the setup key) is shown.</summary>
+        /// <summary>Whether the way to the first administrator's setup (with the setup key) is shown.</summary>
         internal bool OffersFirstAdminSetup => _stage is SetupStage.FirstAdminNeedsKey or SetupStage.StaffPasswordNeedsKey;
 
         /// <summary>Whether the recovery window offers the founder's recovery with the setup key.</summary>
         internal bool OffersSetupKeyRecovery => _stage is SetupStage.FirstAdminNeedsKey or SetupStage.StaffPasswordNeedsKey;
 
-        /// <summary>Information dialogs; replaced in tests so no window opens.</summary>
-        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        internal IUserPrompts Prompts { get; set; }
+        /// <summary>A message from the session that just ended, for example after a password change.</summary>
+        internal void ShowNotice(string? notice)
+        {
+            if (!string.IsNullOrWhiteSpace(notice))
+            {
+                ShowStatus(StatusKind.Info, notice);
+            }
+        }
 
         /// <summary>
         /// Signs the student in; ignored while a previous attempt is still running. Returns the session,
@@ -97,10 +107,19 @@ namespace OnlineEgitim.UI
                 },
                 btnOgrenciGiris,
                 btnOgretmenGiris,
-                button1,
-                lnkKurulum,
-                lnkKurtarma);
+                btnKayit,
+                btnKurulum,
+                btnKurtarma);
             return session;
+        }
+
+        private async Task SignInAndCloseAsync()
+        {
+            var session = await SignInAsync();
+            if (session is not null)
+            {
+                Complete(session);
+            }
         }
 
         private void Complete(UserSession session)
@@ -110,26 +129,16 @@ namespace OnlineEgitim.UI
             Close();
         }
 
-        private async void btnOgrenciGiris_Click(object? sender, EventArgs e)
+        private void OpenStaffSignIn()
         {
-            var session = await SignInAsync();
-            if (session is not null)
-            {
-                Prompts.Inform("Giriş başarılı!");
-                Complete(session);
-            }
-        }
-
-        private void btnOgretmenGiris_Click(object? sender, EventArgs e)
-        {
-            using var teacherSignIn = _forms.Create<OgretmenGirisForm>();
-            if (teacherSignIn.ShowDialog(this) == DialogResult.OK && teacherSignIn.Session is { } session)
+            using var staffSignIn = _forms.Create<OgretmenGirisForm>();
+            if (staffSignIn.ShowDialog(this) == DialogResult.OK && staffSignIn.Session is { } session)
             {
                 Complete(session);
             }
         }
 
-        private void lnkKurulum_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e)
+        private void OpenSetup()
         {
             if (_signIn.IsRunning)
             {
@@ -143,7 +152,7 @@ namespace OnlineEgitim.UI
             }
         }
 
-        private void lnkKurtarma_LinkClicked(object? sender, LinkLabelLinkClickedEventArgs e)
+        private void OpenRecovery()
         {
             if (_signIn.IsRunning)
             {
@@ -158,10 +167,56 @@ namespace OnlineEgitim.UI
             }
         }
 
-        private void button1_Click(object? sender, EventArgs e)
+        private void OpenRegistration()
         {
             using var register = _forms.Create<KayitForm>();
             register.ShowDialog(this);
+        }
+
+        private void BuildLayout()
+        {
+            Name = nameof(GirisForm);
+            SetSidePanel(
+                new BrandPanel(
+                    "Kurslara katılın, notları izleyin; öğrenmeye kaldığınız yerden devam edin.",
+                    (Glyphs.Search, "Kurs kataloğunda ada, konuya ya da öğretmene göre arayın."),
+                    (Glyphs.Join, "Boş yeri olan kurslara tek adımda kaydolun."),
+                    (Glyphs.Note, "Kayıtlı olduğunuz kursların notlarını görün.")),
+                Sizes.BrandPanelWidth);
+
+            var title = FormLayout.SectionTitle("Öğrenci girişi");
+            title.Name = "formTitle";
+            title.Font = Theme.Fonts.Title;
+            var intro = FormLayout.Hint("Ad soyadınız ve şifrenizle giriş yapın.");
+            intro.Name = "formIntro";
+            intro.Margin = new Padding(0, 0, 0, Spacing.XL);
+
+            var name = FormLayout.Field("&Ad soyad", FormLayout.Input(txtAd));
+            var password = FormLayout.Field("Ş&ifre", FormLayout.Input(txtSifre));
+            name.Margin = password.Margin = new Padding(0, 0, 0, Spacing.M);
+            btnOgrenciGiris.AutoSize = false;
+            btnOgrenciGiris.Dock = DockStyle.Top;
+            btnOgrenciGiris.Margin = new Padding(0, Spacing.S, 0, Spacing.XL);
+
+            var newHere = FormLayout.Hint("Hesabınız yok mu? Birkaç bilgiyle hemen kayıt olun.");
+            newHere.Name = "registerHint";
+            newHere.Margin = new Padding(0, 0, 0, Spacing.S);
+            btnKayit.Margin = new Padding(0, 0, 0, Spacing.L);
+
+            var noPassword = FormLayout.Hint("Şifreniz yok ya da unuttunuz mu? Öğretmeninizden veya yöneticiden aldığınız kodla yeni şifre belirleyin.");
+            noPassword.Name = "recoveryHint";
+            noPassword.Margin = new Padding(0, 0, 0, Spacing.XS);
+            btnKurtarma.Margin = btnKurulum.Margin = Padding.Empty;
+
+            var stack = FormLayout.Stack("signInForm", title, intro, name, password, btnOgrenciGiris, newHere, btnKayit, noPassword, btnKurtarma, btnKurulum);
+            stack.Padding = new Padding(Spacing.S, Spacing.S, Spacing.S, 0);
+            btnKayit.Anchor = btnKurtarma.Anchor = btnKurulum.Anchor = AnchorStyles.Left | AnchorStyles.Top;
+            Content.Controls.Add(stack);
+
+            AcceptButton = btnOgrenciGiris;
+            SetFooterNote("Öğretmenler ve yöneticiler kendi girişlerini kullanır.");
+            SetFooterButtons(btnOgretmenGiris, CreateCloseButton("btnCikis", "Çıkış"));
+            FinishLayout();
         }
     }
 }

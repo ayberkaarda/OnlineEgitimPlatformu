@@ -19,14 +19,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Original artwork, rendered from the SVG sources in assets/. -->
-    <EmbeddedResource Include="..\..\assets\logo.png" Link="Assets\logo.png" LogicalName="OnlineEgitim.UI.Assets.logo.png" />
-    <EmbeddedResource Include="..\..\assets\background.png" Link="Assets\background.png" LogicalName="OnlineEgitim.UI.Assets.background.png" />
+    <!-- Original artwork, rasterized from assets/logo.svg by tools/Screenshots (icons command). -->
+    <EmbeddedResource Include="..\..\assets\logo-256.png" Link="Assets\logo-256.png" LogicalName="OnlineEgitim.UI.Assets.logo-256.png" />
     <EmbeddedResource Include="..\..\assets\app.ico" Link="Assets\app.ico" LogicalName="OnlineEgitim.UI.Assets.app.ico" />
   </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="OnlineEgitim.UI.Tests" />
+    <InternalsVisibleTo Include="OnlineEgitim.Screenshots" />
   </ItemGroup>
 
   <ItemGroup>

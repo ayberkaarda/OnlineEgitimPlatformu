@@ -40,9 +40,8 @@ public sealed class BrandingTests
             }
         }
 
-        Assert.Same(AppAssets.Background, Find<PictureBox>(signIn, "pictureBox1").Image);
-        Assert.Same(AppAssets.Logo, Find<PictureBox>(signIn, "pictureBox2").Image);
-        Assert.Same(AppAssets.Logo, Find<PictureBox>(teacher, "pictureBox1").Image);
+        Assert.Same(AppAssets.Logo, Find<Theming.GlyphBadge>(signIn, "brandLogo").Image);
+        Assert.Null(signIn.BackgroundImage);
     });
 
     [Fact]
@@ -50,10 +49,37 @@ public sealed class BrandingTests
     {
         var names = typeof(AppAssets).Assembly.GetManifestResourceNames().Order(StringComparer.Ordinal);
 
-        Assert.Equal(
-            ["OnlineEgitim.UI.Assets.app.ico", "OnlineEgitim.UI.Assets.background.png", "OnlineEgitim.UI.Assets.logo.png"],
-            names);
+        Assert.Equal(["OnlineEgitim.UI.Assets.app.ico", "OnlineEgitim.UI.Assets.logo-256.png"], names);
         Assert.Equal(new Size(256, 256), AppAssets.Logo.Size);
+        Assert.True(AppAssets.Icon.Size.Width >= 16);
+    }
+
+    /// <summary>The icon and the logo come from the one SVG source; the old raster artwork is gone.</summary>
+    [Fact]
+    public void Artwork_IsRasterizedFromTheLogoSource()
+    {
+        var assets = Path.GetDirectoryName(RepositoryFile("assets", "logo.svg"))!;
+
+        Assert.True(File.Exists(Path.Combine(assets, "logo-256.png")));
+        Assert.True(File.Exists(Path.Combine(assets, "app.ico")));
+        Assert.False(File.Exists(Path.Combine(assets, "background.png")));
+        Assert.False(File.Exists(Path.Combine(assets, "logo.png")));
+        var svg = File.ReadAllText(Path.Combine(assets, "logo.svg"));
+        Assert.All(ForbiddenTexts, forbidden => Assert.DoesNotContain(forbidden, svg, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string RepositoryFile(params string[] parts)
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+        {
+            var path = Path.Combine([directory.FullName, .. parts]);
+            if (File.Exists(path))
+            {
+                return path;
+            }
+        }
+
+        throw new FileNotFoundException("Repository file not found.", Path.Combine(parts));
     }
 
     [Fact]
@@ -77,10 +103,10 @@ public sealed class BrandingTests
         Assert.Equal(InputRules.CourseNameMaxLength, Find<TextBox>(addCourse, "txtKursAd").MaxLength);
 
         // The original sign-in fields were multi-line, which shows a password in clear text.
-        foreach (var field in new[] { Find<TextBox>(signIn, "txtSifre"), Find<TextBox>(teacherSignIn, "txtSifre") })
+        foreach (var field in new[] { Find<TextBox>(signIn, "txtSifre"), Find<TextBox>(teacherSignIn, "txtSifre"), Find<TextBox>(register, "txtSifre") })
         {
             Assert.False(field.Multiline);
-            Assert.Equal('*', field.PasswordChar);
+            Assert.True(field.UseSystemPasswordChar);
         }
 
         // A course is always the signed-in teacher's: the teacher fields cannot be edited.
