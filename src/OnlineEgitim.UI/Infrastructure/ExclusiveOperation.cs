@@ -37,6 +37,18 @@ public sealed class ExclusiveOperation
     }
 
     /// <summary>
+    /// Drops a close request that arrived while the pending run was working, so the form stays open after
+    /// the run: for a result the user still has to read, such as a single use code shown only once.
+    /// Returns whether a close request was dropped.
+    /// </summary>
+    public bool DropPendingClose()
+    {
+        var pending = _closeAfterRun is not null;
+        _closeAfterRun = null;
+        return pending;
+    }
+
+    /// <summary>
     /// Chooses the control that receives the focus once the guarded controls are enabled again. A
     /// disabled control cannot take the focus, so the action only records the target and the focus is
     /// moved after the unlock; a closed form or a disposed control is skipped. Only the run that is

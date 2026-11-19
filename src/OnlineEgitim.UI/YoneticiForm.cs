@@ -35,6 +35,11 @@ namespace OnlineEgitim.UI
             Prompts = new MessageBoxPrompts(this);
 
             InitializeComponent();
+
+            // A close request (Çıkış, X, Alt+F4) waits for a running operation, so a code that is being
+            // issued is still shown and the result of a change is known before the window goes.
+            _create.HoldClosingOf(this);
+            _change.HoldClosingOf(this);
             Icon = AppAssets.Icon;
             Text = AppText.Title + " - " + Text;
             lblBaslik.Text = "Kullanıcı Yönetimi - " + session.DisplayName;
@@ -221,11 +226,22 @@ namespace OnlineEgitim.UI
             SessionEnd.Close(this);
         }
 
+        /// <summary>
+        /// Shows the single use code. The code exists only here, so a close request that arrived while it was
+        /// issued is dropped: the window stays open until the administrator closes it after reading the code.
+        /// </summary>
         private void ShowCode(RecoveryCode code, string note)
         {
             txtKod.Text = code.Code;
             lblKodBitis.Text = note + " Son geçerlilik: " + code.ExpiresUtc.ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
+            if (_create.DropPendingClose())
+            {
+                lblKodBitis.Text += " " + CloseKeptForCode;
+            }
         }
+
+        /// <summary>Added to the code's note when a close request was put off so that the code could be read.</summary>
+        internal const string CloseKeptForCode = "Pencere, kodu görebilmeniz için açık kaldı; kodu ilettikten sonra kapatın.";
 
         private void ClearCode()
         {
