@@ -395,7 +395,7 @@ public abstract class AppDialog : Form, IStatusSurface
         var height = 0;
         foreach (Control child in root.Controls)
         {
-            if (child is InfoBar { Visible: false })
+            if (child is InfoBar { Visible: false } || FormLayout.IsHidden(child))
             {
                 continue;
             }
@@ -437,7 +437,7 @@ public abstract class AppDialog : Form, IStatusSurface
     /// </summary>
     private static Size Overlap(Control parent)
     {
-        var children = parent.Controls.Cast<Control>().Where(c => c.Width > 0 && c.Height > 0 && c is not InfoBar).ToList();
+        var children = parent.Controls.Cast<Control>().Where(c => c.Width > 0 && c.Height > 0 && c is not InfoBar && !FormLayout.IsHidden(c)).ToList();
         var width = 0;
         var height = 0;
         for (var i = 0; i < children.Count; i++)

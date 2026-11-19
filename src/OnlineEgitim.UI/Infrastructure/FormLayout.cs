@@ -384,6 +384,40 @@ internal static class FormLayout
         return bar;
     }
 
+    // Controls a screen hid on purpose. Visible reads false for every control until its window is shown, so
+    // the screen's own choice is kept here for the size measurement and the layout checks.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Control, object> Hidden = [];
+
+    /// <summary>Shows or hides <paramref name="control"/>; a hidden control takes no room in its table and is not measured.</summary>
+    public static void SetShown(Control control, bool shown)
+    {
+        ArgumentNullException.ThrowIfNull(control);
+
+        control.Visible = shown;
+        if (shown)
+        {
+            Hidden.Remove(control);
+        }
+        else
+        {
+            Hidden.AddOrUpdate(control, Hidden);
+        }
+    }
+
+    /// <summary>Whether the screen hid <paramref name="control"/> (or one of its containers) with <see cref="SetShown"/>.</summary>
+    public static bool IsHidden(Control control)
+    {
+        for (Control? current = control; current is not null; current = current.Parent)
+        {
+            if (Hidden.TryGetValue(current, out _))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>An empty column for <see cref="Bar"/> that pushes the following items to the right.</summary>
     public static Control Spacer(string name = "spacer") => new Panel { Name = name, Height = 1, Margin = Padding.Empty, TabStop = false };
 }
