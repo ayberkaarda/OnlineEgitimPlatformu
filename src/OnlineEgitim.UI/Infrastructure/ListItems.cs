@@ -6,7 +6,7 @@ namespace OnlineEgitim.UI.Infrastructure;
 /// <summary>How a list shows a course; the id travels with the item instead of being parsed back from the text.</summary>
 internal enum CourseItemStyle
 {
-    /// <summary>"3 - Ad / Eğitmen / Konu", the student's course list.</summary>
+    /// <summary>"3 - Ad / Eğitmen / Konu / 2/20 öğrenci", the student's course catalogue.</summary>
     Catalog,
 
     /// <summary>"Ad / Eğitmen / Konu", the student's own courses.</summary>
@@ -16,12 +16,14 @@ internal enum CourseItemStyle
     Teaching,
 }
 
-/// <summary>A course in a list box.</summary>
-internal sealed record CourseItem(CourseSummary Course, CourseItemStyle Style)
+/// <summary>A course in a list box; <paramref name="Enrolled"/> marks the student's own courses in the catalogue.</summary>
+internal sealed record CourseItem(CourseSummary Course, CourseItemStyle Style, bool Enrolled = false)
 {
     public override string ToString() => Style switch
     {
-        CourseItemStyle.Catalog => $"{Course.Id} - {Course.Name} / {Course.TeacherName} / {Topic}",
+        CourseItemStyle.Catalog => string.Create(
+            CultureInfo.CurrentCulture,
+            $"{Course.Id} - {Course.Name} / {Course.TeacherName} / {Topic} / {Course.StudentCount}/{Seats} öğrenci{(Enrolled ? " / Kayıtlısınız" : string.Empty)}"),
         CourseItemStyle.Mine => $"{Course.Name} / {Course.TeacherName} / {Topic}",
         _ => string.Create(CultureInfo.CurrentCulture, $"{Course.Id} - {Course.Name} ({Course.StudentCount}/{Seats} öğrenci)"),
     };

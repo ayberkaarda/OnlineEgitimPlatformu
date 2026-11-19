@@ -11,9 +11,17 @@ public interface IEnrollmentRepository
     /// <summary>
     /// Adds the student to the course in one transaction under the course's lock: the course must exist
     /// and not be deleted, and the active enrollments are counted against its capacity while no other
-    /// enrollment, capacity change or deletion of the course can run.
+    /// enrollment, capacity change or deletion of the course can run. A student who left the course
+    /// gets the same row back, but only when they left before <paramref name="rejoinAfterLeftBefore"/>.
     /// </summary>
-    Task<EnrollmentStatus> AddAsync(int studentId, int courseId, CancellationToken cancellationToken = default);
+    Task<EnrollmentStatus> AddAsync(int studentId, int courseId, DateTime rejoinAfterLeftBefore, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Closes the student's active enrollment in the course at <paramref name="now"/>, under the course's
+    /// lock, which frees the seat at once.
+    /// </summary>
+    /// <returns><see langword="false"/> when the student has no active enrollment in a course that is not deleted.</returns>
+    Task<bool> LeaveAsync(int studentId, int courseId, DateTime now, CancellationToken cancellationToken = default);
 
     Task<bool> IsEnrolledAsync(int studentId, int courseId, CancellationToken cancellationToken = default);
 
@@ -40,4 +48,7 @@ public enum EnrollmentStatus
 
     /// <summary>Every seat is taken (or the capacity is zero); nothing was written.</summary>
     CourseFull = 3,
+
+    /// <summary>The student left the course too recently to join it again; nothing was written.</summary>
+    RejoinTooSoon = 4,
 }

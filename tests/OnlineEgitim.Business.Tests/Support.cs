@@ -22,6 +22,7 @@ internal static class Validators
     public static readonly StudentNameInputValidator StudentName = new();
     public static readonly CourseInputValidator Course = new();
     public static readonly NoteInputValidator Note = new();
+    public static readonly CourseSearchValidator CourseSearch = new();
 }
 
 /// <summary>Collects the audit events instead of writing them anywhere.</summary>

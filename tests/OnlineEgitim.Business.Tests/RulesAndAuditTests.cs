@@ -61,6 +61,7 @@ public sealed class AuditTests
         { AuditEvent.RegistrationNotCompleted, 14, "auth.student.registration_not_completed" },
         { AuditEvent.CourseUpdated, 15, "course.updated" },
         { AuditEvent.CourseDeleted, 16, "course.deleted" },
+        { AuditEvent.EnrollmentLeft, 17, "course.left" },
     };
 
     [Theory]

@@ -20,6 +20,7 @@ internal static class ValidationMessages
     public const string StudentNameRequired = "Lütfen öğrencinin adını girin.";
     public const string CourseFieldsRequired = "Lütfen tüm alanları doldurun.";
     public const string NoteRequired = "Lütfen bir kurs seçin ve not içeriğini girin.";
+    public const string SearchInvalid = "Arama ölçütleri geçersiz. Daha kısa bir metinle yeniden deneyin.";
 
     public static readonly string NameInvalid = string.Create(
         CultureInfo.InvariantCulture,
@@ -198,6 +199,29 @@ internal sealed class CourseInputValidator : AbstractValidator<CourseInput>
         RuleFor(c => c.Capacity)
             .Must(c => c is null or (>= 0 and <= InputRules.CourseCapacityMax)).WithMessage(ValidationMessages.CapacityInvalid);
     }
+}
+
+/// <summary>
+/// A catalogue search: texts no longer than the columns they are compared with, a page from 0 to
+/// 1,000,000 of 1 to 50 courses and a known enrollment filter.
+/// </summary>
+internal sealed class CourseSearchValidator : AbstractValidator<Services.CourseSearch>
+{
+    public const int MaxPageIndex = 1_000_000;
+
+    public CourseSearchValidator()
+    {
+        RuleFor(s => s)
+            .Must(s => Fits(s.Name, InputRules.CourseNameMaxLength)
+                && Fits(s.Topic, InputRules.TopicMaxLength)
+                && Fits(s.TeacherName, InputRules.PersonNameMaxLength)
+                && s.PageIndex is >= 0 and <= MaxPageIndex
+                && s.PageSize is >= 1 and <= Services.CourseSearch.MaxPageSize
+                && Enum.IsDefined(s.Enrollment))
+            .WithMessage(ValidationMessages.SearchInvalid);
+    }
+
+    private static bool Fits(string? text, int maxLength) => InputRules.Clean(text) is not { } clean || clean.Length <= maxLength;
 }
 
 /// <summary>

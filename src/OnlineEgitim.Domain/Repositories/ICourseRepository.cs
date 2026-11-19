@@ -13,6 +13,13 @@ public interface ICourseRepository
 
     Task<CourseSummary?> GetByIdAsync(int id, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// One page of the courses that match <paramref name="criteria"/>, by name and then id, and the
+    /// number of all matching courses. The texts match anywhere in their column, literally: wildcard
+    /// characters typed by the user are escaped.
+    /// </summary>
+    Task<CatalogPage> SearchAsync(CourseSearchCriteria criteria, CancellationToken cancellationToken = default);
+
     /// <summary>Stores a new course and returns its id.</summary>
     Task<int> AddAsync(Course course, CancellationToken cancellationToken = default);
 

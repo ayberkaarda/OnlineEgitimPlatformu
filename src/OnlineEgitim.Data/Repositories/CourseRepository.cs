@@ -25,6 +25,69 @@ internal sealed class CourseRepository(IDbContextFactory<EgitimDbContext> contex
         return await Summaries(db, db.Courses.Where(c => c.Id == id)).SingleOrDefaultAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<CatalogPage> SearchAsync(CourseSearchCriteria criteria, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(criteria);
+        ArgumentOutOfRangeException.ThrowIfNegative(criteria.Skip);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(criteria.Take);
+
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        var studentId = criteria.StudentId;
+        var rows =
+            from c in db.Courses.AsNoTracking()
+            where c.DeletedUtc == null
+            join t in db.Teachers on c.TeacherId equals t.Id
+            select new
+            {
+                Course = c,
+                TeacherName = t.FullName,
+                Students = db.Enrollments.Count(e => e.CourseId == c.Id && e.LeftUtc == null),
+                Enrolled = db.Enrollments.Any(e => e.CourseId == c.Id && e.StudentId == studentId && e.LeftUtc == null),
+            };
+
+        if (LikePattern.Contains(criteria.Name) is { } name)
+        {
+            rows = rows.Where(r => EF.Functions.Like(r.Course.Name, name, LikePattern.Escape));
+        }
+
+        if (LikePattern.Contains(criteria.Topic) is { } topic)
+        {
+            rows = rows.Where(r => r.Course.Topic != null && EF.Functions.Like(r.Course.Topic, topic, LikePattern.Escape));
+        }
+
+        if (LikePattern.Contains(criteria.TeacherName) is { } teacher)
+        {
+            rows = rows.Where(r => EF.Functions.Like(r.TeacherName, teacher, LikePattern.Escape));
+        }
+
+        if (criteria.OnlyWithFreeSeats)
+        {
+            rows = rows.Where(r => r.Course.Capacity == null || r.Students < r.Course.Capacity);
+        }
+
+        rows = criteria.Enrollment switch
+        {
+            EnrollmentFilter.Enrolled => rows.Where(r => r.Enrolled),
+            EnrollmentFilter.NotEnrolled => rows.Where(r => !r.Enrolled),
+            _ => rows,
+        };
+
+        var total = await rows.CountAsync(cancellationToken).ConfigureAwait(false);
+
+        // Name and then id: courses with the same name keep their order from page to page.
+        var page = await rows
+            .OrderBy(r => r.Course.Name)
+            .ThenBy(r => r.Course.Id)
+            .Skip(criteria.Skip)
+            .Take(criteria.Take)
+            .Select(r => new CatalogEntry(
+                new CourseSummary(r.Course.Id, r.Course.Name, r.Course.TeacherId, r.TeacherName, r.Course.Topic, r.Course.Capacity, r.Students),
+                r.Enrolled))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return new CatalogPage(page, total);
+    }
+
     public async Task<int> AddAsync(Course course, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(course);

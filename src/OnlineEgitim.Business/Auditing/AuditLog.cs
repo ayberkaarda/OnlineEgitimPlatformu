@@ -63,6 +63,9 @@ public enum AuditEvent
 
     /// <summary>A teacher deleted a course; its active enrollments were closed.</summary>
     CourseDeleted = 16,
+
+    /// <summary>A student left a course.</summary>
+    EnrollmentLeft = 17,
 }
 
 /// <summary>Receives <see cref="AuditEvent"/>s.</summary>
@@ -92,6 +95,7 @@ public static class AuditCodes
         AuditEvent.RegistrationNotCompleted => "auth.student.registration_not_completed",
         AuditEvent.CourseUpdated => "course.updated",
         AuditEvent.CourseDeleted => "course.deleted",
+        AuditEvent.EnrollmentLeft => "course.left",
         _ => throw new ArgumentOutOfRangeException(nameof(auditEvent), auditEvent, "Unknown audit event."),
     };
 

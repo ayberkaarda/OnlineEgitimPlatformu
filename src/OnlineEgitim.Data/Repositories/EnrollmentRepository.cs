@@ -7,7 +7,7 @@ namespace OnlineEgitim.Data.Repositories;
 
 internal sealed class EnrollmentRepository(IDbContextFactory<EgitimDbContext> contextFactory) : IEnrollmentRepository
 {
-    public async Task<EnrollmentStatus> AddAsync(int studentId, int courseId, CancellationToken cancellationToken = default)
+    public async Task<EnrollmentStatus> AddAsync(int studentId, int courseId, DateTime rejoinAfterLeftBefore, CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
@@ -26,15 +26,36 @@ internal sealed class EnrollmentRepository(IDbContextFactory<EgitimDbContext> co
             return EnrollmentStatus.CourseNotFound;
         }
 
-        if (await db.Enrollments.AnyAsync(e => e.StudentId == studentId && e.CourseId == courseId, cancellationToken).ConfigureAwait(false))
+        // The pair is the primary key: a student who left keeps the row, and joining again reopens it.
+        var existing = await db.Enrollments
+            .Where(e => e.StudentId == studentId && e.CourseId == courseId)
+            .Select(e => new { e.LeftUtc })
+            .SingleOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (existing is { LeftUtc: null })
         {
             return EnrollmentStatus.AlreadyEnrolled;
+        }
+
+        if (existing is { LeftUtc: { } left } && left >= rejoinAfterLeftBefore)
+        {
+            return EnrollmentStatus.RejoinTooSoon;
         }
 
         var students = await db.Enrollments.CountAsync(e => e.CourseId == courseId && e.LeftUtc == null, cancellationToken).ConfigureAwait(false);
         if (course.Capacity is { } capacity && students >= capacity)
         {
             return EnrollmentStatus.CourseFull;
+        }
+
+        if (existing is not null)
+        {
+            await db.Enrollments
+                .Where(e => e.StudentId == studentId && e.CourseId == courseId && e.LeftUtc != null)
+                .ExecuteUpdateAsync(s => s.SetProperty(e => e.LeftUtc, (DateTime?)null), cancellationToken)
+                .ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return EnrollmentStatus.Enrolled;
         }
 
         db.Enrollments.Add(new Enrollment { StudentId = studentId, CourseId = courseId });
@@ -50,6 +71,27 @@ internal sealed class EnrollmentRepository(IDbContextFactory<EgitimDbContext> co
 
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         return EnrollmentStatus.Enrolled;
+    }
+
+    public async Task<bool> LeaveAsync(int studentId, int courseId, DateTime now, CancellationToken cancellationToken = default)
+    {
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await CourseLock.AcquireAsync(db, courseId, cancellationToken).ConfigureAwait(false);
+
+        // One conditional UPDATE: only the student's own active enrollment, in a course that is not
+        // deleted, is closed; the seat is free for the next enrollment as soon as this commits.
+        var closed = await ActiveOfCourse(db, courseId)
+            .Where(e => e.StudentId == studentId)
+            .ExecuteUpdateAsync(s => s.SetProperty(e => e.LeftUtc, now), cancellationToken)
+            .ConfigureAwait(false);
+        if (closed != 1)
+        {
+            return false;
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return true;
     }
 
     public async Task<bool> IsEnrolledAsync(int studentId, int courseId, CancellationToken cancellationToken = default)

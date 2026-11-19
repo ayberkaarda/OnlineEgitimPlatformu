@@ -23,11 +23,42 @@ public sealed record CourseDetails(
     int StudentCount,
     int? Capacity = null);
 
+/// <summary>
+/// A catalogue search of a student. The texts are matched anywhere in the course name, topic and teacher
+/// name, literally (no wildcards); empty texts do not filter. Pages are counted from 0.
+/// </summary>
+public sealed record CourseSearch(
+    string? Name = null,
+    string? Topic = null,
+    string? TeacherName = null,
+    bool OnlyWithFreeSeats = false,
+    EnrollmentFilter Enrollment = EnrollmentFilter.Any,
+    int PageIndex = 0,
+    int PageSize = CourseSearch.DefaultPageSize)
+{
+    public const int DefaultPageSize = 20;
+
+    public const int MaxPageSize = 50;
+}
+
+/// <summary>One page of a catalogue search; <see cref="PageIndex"/> is the page actually returned.</summary>
+public sealed record CatalogResult(IReadOnlyList<CatalogEntry> Items, int TotalCount, int PageIndex, int PageSize)
+{
+    /// <summary>Number of pages, at least one.</summary>
+    public int PageCount => Math.Max(1, (TotalCount + PageSize - 1) / PageSize);
+}
+
 /// <summary>Course catalogue, course details, course creation and notes.</summary>
 public interface ICourseService
 {
     /// <summary>Every course, for students choosing one to join.</summary>
     Task<IReadOnlyList<CourseSummary>> GetCatalogAsync(UserSession session, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// One page of the catalogue for the signed-in student, by course name and then id, with the number
+    /// of all matching courses. A page past the end returns the last page.
+    /// </summary>
+    Task<CatalogResult> SearchCatalogAsync(UserSession session, CourseSearch search, CancellationToken cancellationToken = default);
 
     /// <summary>The signed-in teacher's own courses.</summary>
     Task<IReadOnlyList<CourseSummary>> GetTeachingAsync(UserSession session, CancellationToken cancellationToken = default);
@@ -73,7 +104,8 @@ internal sealed class CourseService(
     TimeProvider timeProvider,
     IAuditLog audit,
     IValidator<CourseInput> courseValidator,
-    IValidator<NoteInput> noteValidator) : ICourseService
+    IValidator<NoteInput> noteValidator,
+    IValidator<CourseSearch> searchValidator) : ICourseService
 {
     internal const string StudentsChanged =
         "Siz onaylarken bu kursa öğrenci katıldı veya ayrıldı. Kurs silinmedi; lütfen yeniden deneyin.";
@@ -87,6 +119,39 @@ internal sealed class CourseService(
         Access.RequireRole(session, AccountRole.Student, audit);
         return courses.GetAllAsync(cancellationToken);
     }
+
+    public async Task<CatalogResult> SearchCatalogAsync(UserSession session, CourseSearch search, CancellationToken cancellationToken = default)
+    {
+        Access.RequireRole(session, AccountRole.Student, audit);
+        ArgumentNullException.ThrowIfNull(search);
+        searchValidator.ValidateOrThrow(search);
+
+        var pageIndex = search.PageIndex;
+        var page = await courses.SearchAsync(Criteria(session, search, pageIndex), cancellationToken).ConfigureAwait(false);
+        if (page.Items.Count == 0 && pageIndex > 0)
+        {
+            // The list shrank since the page was chosen (or a page past the end was asked for): the
+            // last page is shown, or the first one when nothing matches.
+            pageIndex = page.TotalCount == 0 ? 0 : (page.TotalCount - 1) / search.PageSize;
+            if (page.TotalCount > 0)
+            {
+                page = await courses.SearchAsync(Criteria(session, search, pageIndex), cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        return new CatalogResult(page.Items, page.TotalCount, pageIndex, search.PageSize);
+    }
+
+    private static CourseSearchCriteria Criteria(UserSession session, CourseSearch search, int pageIndex) =>
+        new(
+            session.UserId,
+            InputRules.Clean(search.Name),
+            InputRules.Clean(search.Topic),
+            InputRules.Clean(search.TeacherName),
+            search.OnlyWithFreeSeats,
+            search.Enrollment,
+            pageIndex * search.PageSize,
+            search.PageSize);
 
     public Task<IReadOnlyList<CourseSummary>> GetTeachingAsync(UserSession session, CancellationToken cancellationToken = default)
     {

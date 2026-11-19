@@ -28,6 +28,7 @@ public static class BusinessServiceCollectionExtensions
         services.AddSingleton<IValidator<StudentNameInput>, StudentNameInputValidator>();
         services.AddSingleton<IValidator<CourseInput>, CourseInputValidator>();
         services.AddSingleton<IValidator<NoteInput>, NoteInputValidator>();
+        services.AddSingleton<IValidator<CourseSearch>, CourseSearchValidator>();
         services.AddSingleton<IAuthService, AuthService>();
         services.AddSingleton<ISetupService, SetupService>();
         services.AddSingleton<IRecoveryService, RecoveryService>();

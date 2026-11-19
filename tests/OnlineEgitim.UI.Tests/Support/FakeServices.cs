@@ -71,6 +71,30 @@ internal sealed class ControlledCourseService : ICourseService
     public Task<IReadOnlyList<CourseSummary>> GetCatalogAsync(UserSession session, CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<CourseSummary>>(Courses);
 
+    /// <summary>When set, searches stay pending in <see cref="Searches"/> until the test answers them.</summary>
+    public bool HoldSearches { get; set; }
+
+    public List<(CourseSearch Search, TaskCompletionSource<CatalogResult> Answer)> Searches { get; } = [];
+
+    public Task<CatalogResult> SearchCatalogAsync(UserSession session, CourseSearch search, CancellationToken cancellationToken = default)
+    {
+        var answer = new TaskCompletionSource<CatalogResult>();
+        Searches.Add((search, answer));
+        if (!HoldSearches)
+        {
+            answer.SetResult(Page(Courses, search.PageIndex));
+        }
+
+        return answer.Task;
+    }
+
+    /// <summary>A result with <paramref name="courses"/> on page <paramref name="pageIndex"/> of 20 each.</summary>
+    public static CatalogResult Page(IEnumerable<CourseSummary> courses, int pageIndex = 0, int total = -1)
+    {
+        var items = courses.Select(c => new CatalogEntry(c, false)).ToList();
+        return new CatalogResult(items, total < 0 ? items.Count : total, pageIndex, CourseSearch.DefaultPageSize);
+    }
+
     public Task<IReadOnlyList<CourseSummary>> GetTeachingAsync(UserSession session, CancellationToken cancellationToken = default)
     {
         TeachingCalls++;
@@ -140,6 +164,17 @@ internal sealed class ControlledEnrollmentService : IEnrollmentService
     {
         EnrollCalls++;
         return new TaskCompletionSource().Task;
+    }
+
+    public List<int> LeaveCalls { get; } = [];
+
+    public TaskCompletionSource Leave { get; private set; } = new();
+
+    public Task LeaveAsync(UserSession session, int courseId, CancellationToken cancellationToken = default)
+    {
+        LeaveCalls.Add(courseId);
+        Leave = new TaskCompletionSource();
+        return Leave.Task;
     }
 
     public Task<IReadOnlyList<CourseSummary>> GetMyCoursesAsync(UserSession session, CancellationToken cancellationToken = default) =>

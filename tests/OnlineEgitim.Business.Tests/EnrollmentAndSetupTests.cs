@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Time.Testing;
 using Moq;
 using OnlineEgitim.Business.Auditing;
 using OnlineEgitim.Business.Security;
@@ -14,16 +15,17 @@ public sealed class EnrollmentServiceTests
     private readonly Mock<IEnrollmentRepository> _enrollments = new(MockBehavior.Strict);
     private readonly Mock<ICourseRepository> _courses = new(MockBehavior.Strict);
     private readonly RecordingAudit _audit = new();
+    private readonly FakeTimeProvider _clock = new(new DateTimeOffset(2026, 3, 2, 10, 0, 0, TimeSpan.Zero));
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private EnrollmentService Service => new(_enrollments.Object, _courses.Object, _audit);
+    private EnrollmentService Service => new(_enrollments.Object, _courses.Object, _clock, _audit);
 
     [Fact]
     public async Task Enroll_Twice_GetsTheOriginalMessage()
     {
         _courses.Setup(c => c.GetByIdAsync(3, It.IsAny<CancellationToken>())).ReturnsAsync(DenizCourse);
-        _enrollments.Setup(e => e.AddAsync(5, 3, It.IsAny<CancellationToken>())).ReturnsAsync(EnrollmentStatus.AlreadyEnrolled);
+        _enrollments.Setup(e => e.AddAsync(5, 3, It.IsAny<DateTime>(), It.IsAny<CancellationToken>())).ReturnsAsync(EnrollmentStatus.AlreadyEnrolled);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service.EnrollAsync(Sessions.Student(5), 3, Ct));
 
@@ -35,7 +37,7 @@ public sealed class EnrollmentServiceTests
     public async Task Enroll_UsesTheSessionsStudent()
     {
         _courses.Setup(c => c.GetByIdAsync(3, It.IsAny<CancellationToken>())).ReturnsAsync(DenizCourse);
-        _enrollments.Setup(e => e.AddAsync(5, 3, It.IsAny<CancellationToken>())).ReturnsAsync(EnrollmentStatus.Enrolled);
+        _enrollments.Setup(e => e.AddAsync(5, 3, It.IsAny<DateTime>(), It.IsAny<CancellationToken>())).ReturnsAsync(EnrollmentStatus.Enrolled);
 
         await Service.EnrollAsync(Sessions.Student(5), 3, Ct);
 
@@ -45,7 +47,7 @@ public sealed class EnrollmentServiceTests
     [Fact]
     public async Task Enroll_NoSelectionOrMissingCourse_IsRefusedWithoutAWrite()
     {
-        _enrollments.Setup(e => e.AddAsync(1, 99, It.IsAny<CancellationToken>())).ReturnsAsync(EnrollmentStatus.CourseNotFound);
+        _enrollments.Setup(e => e.AddAsync(1, 99, It.IsAny<DateTime>(), It.IsAny<CancellationToken>())).ReturnsAsync(EnrollmentStatus.CourseNotFound);
 
         var none = await Assert.ThrowsAsync<BusinessRuleException>(() => Service.EnrollAsync(Sessions.Student(), 0, Ct));
         var missing = await Assert.ThrowsAsync<BusinessRuleException>(() => Service.EnrollAsync(Sessions.Student(), 99, Ct));
@@ -53,13 +55,13 @@ public sealed class EnrollmentServiceTests
         Assert.Equal(EnrollmentService.CourseRequired, none.Message);
         Assert.Equal(Access.CourseNotFound, missing.Message);
         Assert.Equal([(AuditEvent.AccessDenied, (AccountRole?)AccountRole.Student)], _audit.Events);
-        _enrollments.Verify(e => e.AddAsync(It.IsAny<int>(), 0, It.IsAny<CancellationToken>()), Times.Never);
+        _enrollments.Verify(e => e.AddAsync(It.IsAny<int>(), 0, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
     public async Task Enroll_FullCourse_IsRefusedWithItsOwnMessageAndNoAudit()
     {
-        _enrollments.Setup(e => e.AddAsync(5, 3, It.IsAny<CancellationToken>())).ReturnsAsync(EnrollmentStatus.CourseFull);
+        _enrollments.Setup(e => e.AddAsync(5, 3, It.IsAny<DateTime>(), It.IsAny<CancellationToken>())).ReturnsAsync(EnrollmentStatus.CourseFull);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service.EnrollAsync(Sessions.Student(5), 3, Ct));
 
