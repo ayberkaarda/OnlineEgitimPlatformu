@@ -184,13 +184,19 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
             .ConfigureAwait(false);
     }
 
-    public async Task<bool> SetRecoveryCodeAsync(int studentId, string codeHash, DateTime expires, CancellationToken cancellationToken = default)
+    // The teacher's ownership is part of the WHERE clause, so it is decided in the same statement that
+    // writes: a student of another teacher, or of no course at all, matches no row.
+    public async Task<bool> SetRecoveryCodeAsync(int teacherId, string studentName, string codeHash, DateTime expires, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(studentName);
         ArgumentNullException.ThrowIfNull(codeHash);
 
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         var updated = await db.Students
-            .Where(s => s.Id == studentId && s.PasswordFormat == PasswordFormat.None)
+            .Where(s => s.FullName == studentName
+                && s.PasswordFormat == PasswordFormat.None
+                && db.Enrollments.Any(e => e.StudentId == s.Id
+                    && db.Courses.Any(c => c.Id == e.CourseId && c.TeacherId == teacherId)))
             .ExecuteUpdateAsync(
                 s => s
                     .SetProperty(a => a.RecoveryCodeHash, codeHash)

@@ -59,11 +59,16 @@ public interface IAccountRepository
     Task<StudentRecoveryState?> FindStudentRecoveryAsync(string fullName, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Stores a recovery code hash for student <paramref name="studentId"/>, replacing an earlier one,
-    /// only while the account has no password (<see cref="PasswordFormat.None"/>).
+    /// Stores a recovery code hash for the student who signs in with <paramref name="studentName"/>,
+    /// replacing an earlier one, in one conditional UPDATE: only while the account has no password
+    /// (<see cref="PasswordFormat.None"/>) and is enrolled in at least one course of teacher
+    /// <paramref name="teacherId"/>.
     /// </summary>
-    /// <returns><see langword="false"/> when the account does not exist or has a password.</returns>
-    Task<bool> SetRecoveryCodeAsync(int studentId, string codeHash, DateTime expires, CancellationToken cancellationToken = default);
+    /// <returns>
+    /// <see langword="false"/> when no such student exists, it has a password or it is not a student
+    /// of the teacher; nothing is written then.
+    /// </returns>
+    Task<bool> SetRecoveryCodeAsync(int teacherId, string studentName, string codeHash, DateTime expires, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gives the student of <paramref name="verified"/> its first password in one conditional UPDATE:

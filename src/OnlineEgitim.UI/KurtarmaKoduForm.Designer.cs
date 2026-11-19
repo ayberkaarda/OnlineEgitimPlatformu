@@ -44,7 +44,7 @@ namespace OnlineEgitim.UI
             this.lblAciklama.Name = "lblAciklama";
             this.lblAciklama.Size = new System.Drawing.Size(392, 52);
             this.lblAciklama.TabIndex = 0;
-            this.lblAciklama.Text = "Eski sistemden şifresiz kalan bir öğrenci için tek kullanımlık kurtarma kodu üretin. Kodu öğrenciye güvenli biçimde iletin; öğrenci kodla kendi şifresini belirler.";
+            this.lblAciklama.Text = "Kendi dersinize kayıtlı, şifresiz kalan bir öğrenci için tek kullanımlık kurtarma kodu üretin. Kodu öğrenciye güvenli biçimde iletin; öğrenci kodla kendi şifresini belirler.";
             //
             // label1
             //

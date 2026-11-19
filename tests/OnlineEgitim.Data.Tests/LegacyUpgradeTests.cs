@@ -169,9 +169,25 @@ public sealed class LegacyUpgradeTests
         Assert.Equal(studentBefore, await database.TextAsync(Student, ct));
         Assert.Equal(teacherBefore, await database.TextAsync(Teacher, ct));
 
-        // A teacher issues a code; a wrong code is refused, the right one works once.
-        var teacher = await auth.SignInTeacherAsync("Eski Öğretmen", "1234", ct);
-        await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.IssueStudentCodeAsync(teacher, "Eski Öğrenci", ct)); // has a password
+        // The student is enrolled only in a course of the passwordless teacher: another teacher may not
+        // issue its code, and nothing changes.
+        var otherTeacher = await auth.SignInTeacherAsync("Eski Öğretmen", "1234", ct);
+        await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.IssueStudentCodeAsync(otherTeacher, "Eski Öğrenci", ct)); // has a password
+        await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.IssueStudentCodeAsync(otherTeacher, "Şifresiz Öğrenci", ct)); // not their student
+        Assert.Equal(studentBefore, await database.TextAsync(Student, ct));
+
+        // The founder sets the passwordless teacher's password with the setup key, once.
+        var teacher = await recovery.RecoverTeacherAsync(TestServices.TestSetupKey.Key, "Diğer Öğretmen", "Yeni.Sifre2", "Yeni.Sifre2", ct);
+        Assert.Equal(5, teacher.UserId);
+        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Egitmenler WHERE EgitmenID = 5 AND SifreBicimi = 0 AND Sifre LIKE N'PBKDF2-SHA256$%'", ct));
+        Assert.Equal([4], (await provider.GetRequiredService<ICourseService>().GetTeachingAsync(teacher, ct)).Select(c => c.Id));
+        Assert.Equal(5, (await auth.SignInTeacherAsync("Diğer Öğretmen", "Yeni.Sifre2", ct)).UserId);
+        provider.SetupKey().Reissue();
+        await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.RecoverTeacherAsync(TestServices.TestSetupKey.Key, "Diğer Öğretmen", "Baska.Sifre1", "Baska.Sifre1", ct));
+        await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.RecoverTeacherAsync(TestServices.TestSetupKey.Key, "Eski Öğretmen", "Baska.Sifre1", "Baska.Sifre1", ct));
+        Assert.Equal(1, provider.SetupKey().Consumed);
+
+        // The student's own teacher issues a code; a wrong code is refused, the right one works once.
         var code = await recovery.IssueStudentCodeAsync(teacher, "Şifresiz Öğrenci", ct);
         Assert.Matches("^[0-9A-Z]{5}-[0-9A-Z]{5}$", code.Code);
         Assert.Equal(0, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Ogrenci WHERE KurtarmaKodu LIKE N'%' + @code + N'%'", ct, ("@code", code.Code)));
@@ -185,17 +201,6 @@ public sealed class LegacyUpgradeTests
         await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.RecoverStudentAsync("Şifresiz Öğrenci", code.Code, "Baska.Sifre1", "Baska.Sifre1", ct));
         Assert.Equal(4, (await auth.SignInStudentAsync("Şifresiz Öğrenci", "Yeni.Sifre1", ct)).UserId);
         Assert.Equal([4], (await provider.GetRequiredService<IEnrollmentService>().GetMyCoursesAsync(student, ct)).Select(c => c.Id));
-
-        // The founder sets the passwordless teacher's password with the setup key, once.
-        var recovered = await recovery.RecoverTeacherAsync(TestServices.TestSetupKey.Key, "Diğer Öğretmen", "Yeni.Sifre2", "Yeni.Sifre2", ct);
-        Assert.Equal(5, recovered.UserId);
-        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Egitmenler WHERE EgitmenID = 5 AND SifreBicimi = 0 AND Sifre LIKE N'PBKDF2-SHA256$%'", ct));
-        Assert.Equal([4], (await provider.GetRequiredService<ICourseService>().GetTeachingAsync(recovered, ct)).Select(c => c.Id));
-        Assert.Equal(5, (await auth.SignInTeacherAsync("Diğer Öğretmen", "Yeni.Sifre2", ct)).UserId);
-        provider.SetupKey().Reissue();
-        await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.RecoverTeacherAsync(TestServices.TestSetupKey.Key, "Diğer Öğretmen", "Baska.Sifre1", "Baska.Sifre1", ct));
-        await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.RecoverTeacherAsync(TestServices.TestSetupKey.Key, "Eski Öğretmen", "Baska.Sifre1", "Baska.Sifre1", ct));
-        Assert.Equal(1, provider.SetupKey().Consumed);
         Assert.Equal(2, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Egitmenler", ct));
         Assert.Equal(3, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Ogrenci", ct));
     }

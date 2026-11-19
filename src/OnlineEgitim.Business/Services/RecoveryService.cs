@@ -20,7 +20,9 @@ public interface IRecoveryService
 {
     /// <summary>
     /// Issues a recovery code for the student without a password who signs in with
-    /// <paramref name="studentName"/>, replacing an earlier code. Teachers only.
+    /// <paramref name="studentName"/>, replacing an earlier code. Teachers only, and only for a student
+    /// enrolled in at least one of the teacher's own courses; any other student gets the answer of a
+    /// student that does not exist and keeps its earlier code.
     /// </summary>
     Task<RecoveryCode> IssueStudentCodeAsync(UserSession teacher, string? studentName, CancellationToken cancellationToken = default);
 
@@ -56,15 +58,16 @@ internal sealed class RecoveryService(
             throw new BusinessRuleException(StudentNameRequired);
         }
 
-        var student = await accounts.FindStudentRecoveryAsync(name, cancellationToken).ConfigureAwait(false);
-        if (student is null || student.PasswordFormat != PasswordFormat.None)
-        {
-            throw new BusinessRuleException(NoPasswordlessStudent);
-        }
-
+        // One conditional write decides: a missing student, one with a password and a student who is
+        // not enrolled in any course of this teacher get the same answer, and nothing changes.
         var code = FileSetupKeyStore.NewCode(RecoveryPolicy.CodeLength);
         var expires = timeProvider.GetUtcNow().UtcDateTime + RecoveryPolicy.CodeLifetime;
-        var stored = await accounts.SetRecoveryCodeAsync(student.Id, passwordHasher.Hash(FileSetupKeyStore.Normalize(code)), expires, cancellationToken).ConfigureAwait(false);
+        var stored = await accounts.SetRecoveryCodeAsync(
+            teacher.UserId,
+            name,
+            passwordHasher.Hash(FileSetupKeyStore.Normalize(code)),
+            expires,
+            cancellationToken).ConfigureAwait(false);
         if (!stored)
         {
             throw new BusinessRuleException(NoPasswordlessStudent);

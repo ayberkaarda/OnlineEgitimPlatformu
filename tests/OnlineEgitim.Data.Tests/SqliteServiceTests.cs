@@ -307,11 +307,9 @@ public sealed class SqliteServiceTests : IAsyncLifetime
     [Fact]
     public async Task Recovery_ExpiredOrReplacedCode_IsRefused()
     {
-        await using (var context = _db.CreateContext())
-        {
-            context.Students.Add(new Student { FullName = "Kodsuz Öğrenci", Email = "kodsuz@example.com", PasswordHash = string.Empty, PasswordFormat = PasswordFormat.None });
-            await context.SaveChangesAsync(Ct);
-        }
+        // Enrolled in a course of each teacher, so both may issue its code.
+        var studentId = await AddPasswordlessStudentAsync("Kodsuz Öğrenci", DenizCourseId, EceCourseId);
+        Assert.True(studentId > SelinId);
 
         var recovery = _db.Get<IRecoveryService>();
         var hasPassword = await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.IssueStudentCodeAsync(Teacher(DenizId), "Mert Deneme", Ct));
@@ -333,6 +331,64 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         Assert.True(session.IsStudent);
         Assert.Equal(session.UserId, (await Auth.SignInStudentAsync("Kodsuz Öğrenci", "Yeni.Sifre1", Ct)).UserId);
         await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.IssueStudentCodeAsync(Teacher(DenizId), "Kodsuz Öğrenci", Ct));
+    }
+
+    /// <summary>
+    /// A teacher issues recovery codes only for passwordless students of their own courses. A student
+    /// of another teacher's course only, or of no course at all, gets the answer of a student that does
+    /// not exist, and nothing is written: the code issued by the student's own teacher keeps working.
+    /// </summary>
+    [Fact]
+    public async Task RecoveryCode_ForeignStudent_IsDeniedWithoutMutation()
+    {
+        await AddPasswordlessStudentAsync("Ecenin Öğrencisi", EceCourseId);
+        await AddPasswordlessStudentAsync("Derssiz Öğrenci");
+        var recovery = _db.Get<IRecoveryService>();
+
+        var own = await recovery.IssueStudentCodeAsync(Teacher(EceId), "Ecenin Öğrencisi", Ct);
+        var before = await RecoveryStateAsync("Ecenin Öğrencisi");
+        Assert.NotNull(before.Hash);
+
+        var foreign = await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.IssueStudentCodeAsync(Teacher(DenizId), "Ecenin Öğrencisi", Ct));
+        var missing = await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.IssueStudentCodeAsync(Teacher(DenizId), "Olmayan Öğrenci", Ct));
+        var unenrolledByDeniz = await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.IssueStudentCodeAsync(Teacher(DenizId), "Derssiz Öğrenci", Ct));
+        var unenrolledByEce = await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.IssueStudentCodeAsync(Teacher(EceId), "Derssiz Öğrenci", Ct));
+
+        Assert.Equal(RecoveryService.NoPasswordlessStudent, missing.Message);
+        Assert.Equal(missing.Message, foreign.Message);
+        Assert.Equal(missing.Message, unenrolledByDeniz.Message);
+        Assert.Equal(missing.Message, unenrolledByEce.Message);
+        Assert.Equal(before, await RecoveryStateAsync("Ecenin Öğrencisi"));
+        Assert.Equal((null, null), await RecoveryStateAsync("Derssiz Öğrenci"));
+
+        // The own teacher's code was neither replaced nor revoked.
+        var session = await recovery.RecoverStudentAsync("Ecenin Öğrencisi", own.Code, "Yeni.Sifre1", "Yeni.Sifre1", Ct);
+        Assert.True(session.IsStudent);
+    }
+
+    private async Task<int> AddPasswordlessStudentAsync(string name, params int[] courseIds)
+    {
+        await using var context = _db.CreateContext();
+        var student = new Student { FullName = name, Email = Guid.NewGuid().ToString("N") + "@example.com", PasswordHash = string.Empty, PasswordFormat = PasswordFormat.None };
+        context.Students.Add(student);
+        await context.SaveChangesAsync(Ct);
+        foreach (var courseId in courseIds)
+        {
+            context.Enrollments.Add(new Enrollment { StudentId = student.Id, CourseId = courseId });
+        }
+
+        await context.SaveChangesAsync(Ct);
+        return student.Id;
+    }
+
+    private async Task<(string? Hash, DateTime? Expires)> RecoveryStateAsync(string name)
+    {
+        await using var context = _db.CreateContext();
+        var state = await context.Students
+            .Where(s => s.FullName == name)
+            .Select(s => new { s.RecoveryCodeHash, s.RecoveryCodeExpires })
+            .SingleAsync(Ct);
+        return (state.RecoveryCodeHash, state.RecoveryCodeExpires);
     }
 
     [Fact]
