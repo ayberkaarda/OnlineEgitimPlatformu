@@ -85,6 +85,57 @@ internal static class FormLayout
         return card;
     }
 
+    /// <summary>
+    /// A tinted card with a glyph badge and an explanation that wraps inside it, for what a screen needs the
+    /// user to know before filling it in (who issues a code, what happens on success).
+    /// </summary>
+    public static CardPanel Note(string name, string glyph, Label text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+
+        var p = Theme.Current;
+        var badge = new GlyphBadge(glyph, 32, 12F)
+        {
+            Name = name + "Badge",
+            Fill = p.Surface,
+            GlyphColor = p.AccentText,
+            Margin = new Padding(0, 0, Spacing.M, 0),
+            Anchor = AnchorStyles.Left | AnchorStyles.Top,
+        };
+        text.AutoSize = true;
+        text.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
+        text.Margin = new Padding(0, Spacing.XS + 2, 0, 0);
+        var layout = new TableLayoutPanel
+        {
+            Name = name + "Layout",
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 2,
+            RowCount = 1,
+            Dock = DockStyle.Top,
+            Margin = Padding.Empty,
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.Controls.Add(badge, 0, 0);
+        layout.Controls.Add(text, 1, 0);
+
+        var card = new CardPanel
+        {
+            Name = name,
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Padding = new Padding(Spacing.L, Spacing.M, Spacing.L, Spacing.M),
+            Margin = new Padding(0, 0, 0, Spacing.L),
+        };
+        card.Fill = p.AccentSubtle;
+        card.Edge = p.Accent;
+        card.Controls.Add(layout);
+        return card;
+    }
+
     public static Label SectionTitle(string text) => new()
     {
         Text = text,

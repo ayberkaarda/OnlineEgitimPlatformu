@@ -1,7 +1,9 @@
+using System.Globalization;
 using OnlineEgitim.Business.Security;
 using OnlineEgitim.Business.Services;
 using OnlineEgitim.Business.Validation;
 using OnlineEgitim.UI.Infrastructure;
+using OnlineEgitim.UI.Theming;
 
 namespace OnlineEgitim.UI
 {
@@ -12,31 +14,32 @@ namespace OnlineEgitim.UI
     /// first administrator account with a password of their own; there is no default password. Closes
     /// with <see cref="DialogResult.OK"/> and <see cref="Session"/> set on success.
     /// </summary>
-    public partial class IlkKurulumForm : Form
+    public sealed class IlkKurulumForm : AppDialog
     {
         private readonly ISetupService _setup;
         private readonly ExclusiveOperation _create = new();
         private bool _keyRequired;
 
+        private readonly Label lblAciklama = FormLayout.Text(nameof(lblAciklama));
+        private readonly TextBox txtAnahtar = new() { Name = nameof(txtAnahtar), MaxLength = 64, UseSystemPasswordChar = true };
+        private readonly TextBox txtAd = new() { Name = nameof(txtAd), MaxLength = InputRules.PersonNameMaxLength };
+        private readonly TextBox txtUzmanlik = new() { Name = nameof(txtUzmanlik), MaxLength = InputRules.SpecialtyMaxLength };
+        private readonly TextBox txtSifre = new() { Name = nameof(txtSifre), MaxLength = PasswordPolicy.MaxLength, UseSystemPasswordChar = true };
+        private readonly TextBox txtSifreTekrar = new() { Name = nameof(txtSifreTekrar), MaxLength = PasswordPolicy.MaxLength, UseSystemPasswordChar = true };
+        private readonly ThemedButton btnOlustur = FormLayout.Button(nameof(btnOlustur), "Yöneticiyi oluştur", ButtonKind.Primary);
+        private readonly ThemedButton btnIptal = FormLayout.Button(nameof(btnIptal), "İptal", ButtonKind.Secondary);
+        private TableLayoutPanel _keyField = null!;
+
         public IlkKurulumForm(ISetupService setup)
+            : base("İlk kurulum", "İlk yönetici hesabını kendi şifrenizle oluşturun.", Glyphs.Admin, new Size(640, 560), new Size(520, 480))
         {
             ArgumentNullException.ThrowIfNull(setup);
 
             _setup = setup;
-            Prompts = new MessageBoxPrompts(this);
-
-            InitializeComponent();
+            BuildLayout();
             _create.HoldClosingOf(this);
-            Icon = AppAssets.Icon;
-            Text = AppText.Title + " - " + Text;
             KeyRequired = true;
-            txtAnahtar.MaxLength = 64;
-            txtAd.MaxLength = InputRules.PersonNameMaxLength;
-            txtUzmanlik.MaxLength = InputRules.SpecialtyMaxLength;
-            txtSifre.MaxLength = PasswordPolicy.MaxLength;
-            txtSifreTekrar.MaxLength = PasswordPolicy.MaxLength;
-            AcceptButton = btnOlustur;
-            CancelButton = btnIptal;
+            btnOlustur.Click += async (_, _) => await CreateAndCloseAsync();
         }
 
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
@@ -53,17 +56,12 @@ namespace OnlineEgitim.UI
             set
             {
                 _keyRequired = value;
-                label5.Visible = value;
-                txtAnahtar.Visible = value;
+                FormLayout.SetShown(_keyField, value);
                 var prefill = value ? _setup.GetEnvironmentKey() : new SetupKeyPrefill(null, false);
                 txtAnahtar.Text = prefill.Key ?? string.Empty;
                 lblAciklama.Text = SetupKeyHint(value) + (prefill.Invalid ? "\n" + EnvironmentKeyInvalid : string.Empty);
             }
         }
-
-        /// <summary>Information dialogs; replaced in tests so no window opens.</summary>
-        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        internal IUserPrompts Prompts { get; set; }
 
         /// <summary>Creates the first administrator; ignored while a previous attempt is still running.</summary>
         internal async Task<UserSession?> CreateAsync()
@@ -111,16 +109,42 @@ namespace OnlineEgitim.UI
         internal const string EnvironmentKeyInvalid =
             "Uyarı: EGITIM_SETUP_KEY ortam değişkeni geçerli bir kurulum anahtarı (32 onaltılık karakter) içermiyor; değişkeni düzeltin veya kaldırın.";
 
-        private async void btnOlustur_Click(object? sender, EventArgs e)
+        private async Task CreateAndCloseAsync()
         {
             var session = await CreateAsync();
             if (session is not null)
             {
-                Prompts.Inform("Yönetici hesabı oluşturuldu.");
                 Session = session;
                 DialogResult = DialogResult.OK;
                 Close();
             }
+        }
+
+        private void BuildLayout()
+        {
+            Name = nameof(IlkKurulumForm);
+            var note = FormLayout.Note("setupNote", Glyphs.Info, lblAciklama);
+
+            _keyField = FormLayout.Field("&Kurulum anahtarı", FormLayout.Input(txtAnahtar), "Anahtar ekranda gösterilmez; yapıştırabilirsiniz.");
+            var name = FormLayout.Field("&Ad soyad", FormLayout.Input(txtAd));
+            var specialty = FormLayout.Field("&Uzmanlık alanı", FormLayout.Input(txtUzmanlik));
+            var passwords = FormLayout.FieldRow(
+                "passwordRow",
+                (FormLayout.Field("Ş&ifre", FormLayout.Input(txtSifre), string.Create(CultureInfo.CurrentCulture, $"En az {PasswordPolicy.MinLength} karakter.")), 50),
+                (FormLayout.Field("Şifre &tekrar", FormLayout.Input(txtSifreTekrar)), 50));
+            _keyField.Margin = name.Margin = specialty.Margin = new Padding(0, 0, 0, Spacing.M);
+
+            var form = FormLayout.Stack("setupForm", _keyField, name, specialty, passwords);
+            var card = FormLayout.Card("setupCard", null, form, fill: false);
+            card.Margin = Padding.Empty;
+            Content.Controls.Add(FormLayout.Page("setupPage", (note, false), (card, false)));
+
+            AcceptButton = btnOlustur;
+            CancelButton = btnIptal;
+            btnIptal.DialogResult = DialogResult.Cancel;
+            SetFooterNote("Hesap oluşunca yönetici paneli açılır.");
+            SetFooterButtons(btnOlustur, btnIptal);
+            FinishLayout();
         }
     }
 }

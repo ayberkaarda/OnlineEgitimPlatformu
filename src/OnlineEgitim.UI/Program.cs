@@ -90,13 +90,14 @@ namespace OnlineEgitim.UI
                 new WindowsFormsSynchronizationContext(),
                 () => SystemInformation.HighContrast,
                 Theme.SystemPrefersDark);
+            string? notice = null;
             while (true)
             {
                 UserSession? session;
                 try
                 {
                     var stage = serviceProvider.GetRequiredService<ISetupService>().GetStageAsync().GetAwaiter().GetResult();
-                    session = SignIn(forms, stage);
+                    session = SignIn(forms, stage, notice);
                 }
 #pragma warning disable CA1031 // Startup boundary: report and exit instead of crashing.
                 catch (Exception ex)
@@ -115,10 +116,12 @@ namespace OnlineEgitim.UI
                 // disabled) leads back to the sign-in; any other close ends the application.
                 using var panel = CreatePanel(forms, session);
                 Application.Run(panel);
-                if (panel is not ISessionPanel { SignedOut: true })
+                if (panel is not ISessionPanel { SignedOut: true } ended)
                 {
                     return 0;
                 }
+
+                notice = ended.SignOutNotice;
             }
         }
 
@@ -133,9 +136,10 @@ namespace OnlineEgitim.UI
         /// <summary>
         /// The first-run setup (without a key) on an empty database, otherwise the sign-in, which offers
         /// the founder operations of <paramref name="stage"/>. Returns the session, or
-        /// <see langword="null"/> when the user closed the window.
+        /// <see langword="null"/> when the user closed the window. <paramref name="notice"/> is the reason the
+        /// previous session ended, shown on the sign-in screen.
         /// </summary>
-        private static UserSession? SignIn(IFormFactory forms, SetupStage stage)
+        private static UserSession? SignIn(IFormFactory forms, SetupStage stage, string? notice)
         {
             if (stage == SetupStage.EmptyDatabase)
             {
@@ -146,6 +150,7 @@ namespace OnlineEgitim.UI
 
             using var signIn = forms.Create<GirisForm>();
             signIn.Stage = stage;
+            signIn.ShowNotice(notice);
             return signIn.ShowDialog() == DialogResult.OK ? signIn.Session : null;
         }
 
