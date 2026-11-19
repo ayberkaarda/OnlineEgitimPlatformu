@@ -428,12 +428,17 @@ public abstract class AppDialog : Form, IStatusSurface
                 var offset = child.Location;
                 for (var ancestor = child.Parent; ancestor is not null; ancestor = ancestor.Parent)
                 {
+                    // Inside a container's padding counts as cut off too (a card's content running over its
+                    // border); a scrolling container is measured by its visible area.
+                    var limit = ancestor is ScrollableControl { AutoScroll: true }
+                        ? new Rectangle(Point.Empty, ancestor.ClientSize)
+                        : ancestor.DisplayRectangle;
                     if (!label)
                     {
-                        width = Math.Max(width, Math.Max(offset.X + child.Width - ancestor.ClientSize.Width, -offset.X) - Tolerance);
+                        width = Math.Max(width, Math.Max(offset.X + child.Width - limit.Right, -offset.X) - Tolerance);
                     }
 
-                    height = Math.Max(height, offset.Y + child.Height - ancestor.ClientSize.Height - Tolerance);
+                    height = Math.Max(height, offset.Y + child.Height - limit.Bottom - Tolerance);
                     offset = new Point(offset.X + ancestor.Left, offset.Y + ancestor.Top);
                 }
             }
