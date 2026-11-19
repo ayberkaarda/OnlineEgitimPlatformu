@@ -18,6 +18,12 @@ internal static class ErrorReporter
 
     internal const string UnexpectedErrorMessage = "Beklenmeyen bir hata oluştu. İşleminiz tamamlanamamış olabilir.";
 
+    /// <summary>A lock on the same course (or the administrators' lock) stayed taken for the whole wait; nothing changed.</summary>
+    internal const string BusyMessage = "İşlem meşgul: aynı kayıt üzerinde başka bir işlem sürüyor. Hiçbir değişiklik yapılmadı; lütfen biraz sonra tekrar deneyin.";
+
+    internal const string UpgradeBusyMessage =
+        "Veritabanı şu anda başka bir açılışta güncelleniyor. Lütfen güncelleme bittikten sonra uygulamayı yeniden açın.";
+
     public static void Show(Exception? exception, IWin32Window? owner = null)
     {
         if (exception is null)
@@ -121,8 +127,16 @@ internal static class ErrorReporter
 
         if (Find<DatabaseInitializationException>(exception) is not null)
         {
-            return "Veritabanı hazırlanamadı. SQL Server'ın çalıştığından, bağlantı ayarlarının doğru olduğundan "
-                + "ve veritabanı oluşturma yetkiniz bulunduğundan emin olun.";
+            // Another start held the upgrade lock for longer than this one waits.
+            return Find<AppLockNotGrantedException>(exception) is not null
+                ? UpgradeBusyMessage
+                : "Veritabanı hazırlanamadı. SQL Server'ın çalıştığından, bağlantı ayarlarının doğru olduğundan "
+                    + "ve veritabanı oluşturma yetkiniz bulunduğundan emin olun.";
+        }
+
+        if (Find<AppLockNotGrantedException>(exception) is not null)
+        {
+            return BusyMessage;
         }
 
         if (Find<DbException>(exception) is not null)
