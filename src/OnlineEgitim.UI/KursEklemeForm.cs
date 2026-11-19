@@ -77,8 +77,23 @@ namespace OnlineEgitim.UI
             btnEkle.Text = "Kaydet";
             txtKursAd.Text = course.Name;
             txtKonu.Text = course.Topic ?? string.Empty;
+
+            // The database only requires a capacity of at least 0; one set outside the application can be
+            // larger than the field allows. It is shown at the limit, with a warning, instead of failing.
+            if (course.Capacity is { } stored && (stored > InputRules.CourseCapacityMax || stored < 0))
+            {
+                Capacity = Math.Clamp(stored, 0, InputRules.CourseCapacityMax);
+                Prompts.Warn(CapacityOutOfRange(stored));
+                return;
+            }
+
             Capacity = course.Capacity;
         }
+
+        /// <summary>The warning shown when the stored capacity lies outside what the form accepts.</summary>
+        internal static string CapacityOutOfRange(int stored) => string.Create(
+            System.Globalization.CultureInfo.CurrentCulture,
+            $"Bu kursun kayıtlı kontenjanı ({stored}) uygulamanın sınırının ({InputRules.CourseCapacityMax}) dışında. Alan {Math.Clamp(stored, 0, InputRules.CourseCapacityMax)} olarak gösteriliyor; kaydederseniz kontenjan bu değer olur.");
 
         /// <summary>Shows the signed-in teacher's name and specialty.</summary>
         internal Task LoadAsync() =>
