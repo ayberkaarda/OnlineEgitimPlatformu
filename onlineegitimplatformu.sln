@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OnlineEgitim.Domain", "src\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OnlineEgitim.Business", "src\OnlineEgitim.Business\OnlineEgitim.Business.csproj", "{16014229-06BC-489E-B6D5-D03FBFC48002}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OnlineEgitim.Data", "src\OnlineEgitim.Data\OnlineEgitim.Data.csproj", "{4E6F6871-5EDC-435D-B811-23E93FF1528F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -57,6 +59,18 @@ Global
 		{16014229-06BC-489E-B6D5-D03FBFC48002}.Release|x64.Build.0 = Release|Any CPU
 		{16014229-06BC-489E-B6D5-D03FBFC48002}.Release|x86.ActiveCfg = Release|Any CPU
 		{16014229-06BC-489E-B6D5-D03FBFC48002}.Release|x86.Build.0 = Release|Any CPU
+		{4E6F6871-5EDC-435D-B811-23E93FF1528F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4E6F6871-5EDC-435D-B811-23E93FF1528F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4E6F6871-5EDC-435D-B811-23E93FF1528F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{4E6F6871-5EDC-435D-B811-23E93FF1528F}.Debug|x64.Build.0 = Debug|Any CPU
+		{4E6F6871-5EDC-435D-B811-23E93FF1528F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{4E6F6871-5EDC-435D-B811-23E93FF1528F}.Debug|x86.Build.0 = Debug|Any CPU
+		{4E6F6871-5EDC-435D-B811-23E93FF1528F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4E6F6871-5EDC-435D-B811-23E93FF1528F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4E6F6871-5EDC-435D-B811-23E93FF1528F}.Release|x64.ActiveCfg = Release|Any CPU
+		{4E6F6871-5EDC-435D-B811-23E93FF1528F}.Release|x64.Build.0 = Release|Any CPU
+		{4E6F6871-5EDC-435D-B811-23E93FF1528F}.Release|x86.ActiveCfg = Release|Any CPU
+		{4E6F6871-5EDC-435D-B811-23E93FF1528F}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -64,6 +78,7 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{57EB84EB-4A8C-427D-A034-46D62DA39E0F} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{16014229-06BC-489E-B6D5-D03FBFC48002} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{4E6F6871-5EDC-435D-B811-23E93FF1528F} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {1CFFE57D-E7A5-44D3-A5C9-42749E54AB98}
