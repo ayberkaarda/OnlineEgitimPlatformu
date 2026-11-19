@@ -1,0 +1,44 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>OnlineEgitim.UI</RootNamespace>
+    <AssemblyName>OnlineEgitim</AssemblyName>
+    <Product>Online Eğitim</Product>
+    <NeutralLanguage>tr-TR</NeutralLanguage>
+    <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>
+    <ApplicationIcon>..\..\assets\app.ico</ApplicationIcon>
+    <UserSecretsId>online-egitim-ui</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="appsettings.example.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="appsettings.json" Condition="Exists('appsettings.json')" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Original artwork, rendered from the SVG sources in assets/. -->
+    <EmbeddedResource Include="..\..\assets\logo.png" Link="Assets\logo.png" LogicalName="OnlineEgitim.UI.Assets.logo.png" />
+    <EmbeddedResource Include="..\..\assets\background.png" Link="Assets\background.png" LogicalName="OnlineEgitim.UI.Assets.background.png" />
+    <EmbeddedResource Include="..\..\assets\app.ico" Link="Assets\app.ico" LogicalName="OnlineEgitim.UI.Assets.app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="OnlineEgitim.UI.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OnlineEgitim.Business\OnlineEgitim.Business.csproj" />
+    <ProjectReference Include="..\OnlineEgitim.Data\OnlineEgitim.Data.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.15" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.15" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.15" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.15" />
+  </ItemGroup>
+
+</Project>
