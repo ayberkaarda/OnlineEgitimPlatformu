@@ -18,7 +18,21 @@ Projeyi çalıştırmak için aşağıdaki adımları takip edin:
 3. **Projeyi Başlatın:**
    - `dotnet run --project src/OnlineEgitim.UI` komutunu çalıştırın ya da çözümü Visual Studio ile açın.
    - Veritabanı ilk çalıştırmada EF Core migration'larıyla otomatik oluşturulur. Eski uygulamanın veritabanı varsa veriler korunarak yerinde yükseltilir.
-   - Yeni bir veritabanında hazır hesap yoktur: ilk açılışta **İlk Kurulum** ekranında ilk öğretmen hesabını kendi belirlediğiniz şifreyle oluşturun.
+     Kimliği belirsiz kayıtlar (eksik, boşluklu veya yinelenen ad/e-posta, OgrenciID ve DersID dışında sütun içeren kayıt anahtarı, mükerrer ders kaydı)
+     yükseltmeyi hiçbir değişiklik yapmadan durdurur; hata penceresi ve günlük yalnızca sorun türünü ve sayısını gösterir. Kayıtları düzeltip uygulamayı yeniden başlatın.
+
+4. **İlk Öğretmen (Kurucu Anahtarı):**
+   - Hazır hesap yoktur. Veritabanı tamamen boşsa uygulama **İlk Kurulum** ekranıyla açılır; öğrencileri olan ama öğretmeni olmayan bir veritabanında
+     normal giriş ekranı açılır ve kurulum, girişteki **İlk öğretmen kurulumu (kurucu anahtarı)** bağlantısındadır.
+   - İlk öğretmen yalnızca bu bilgisayarın **kurulum anahtarıyla** oluşturulur. Anahtar, ekran açıldığında `%LOCALAPPDATA%\OnlineEgitim\setup-key.txt`
+     dosyasına rastgele yazılır (uygulamayı çalıştıran Windows kullanıcısının profilinde). Alternatif olarak en az 16 karakterlik `EGITIM_SETUP_KEY` ortam değişkeni
+     tanımlanabilir. Anahtar bir kez kullanılır, kullanılınca geçersiz olur ve hiçbir yere kaydedilmez/günlüğe yazılmaz.
+
+5. **Şifresiz Eski Hesapların Kurtarılması:**
+   - Eski uygulamada şifresi boş kalan hesaplar boş veya herhangi bir şifreyle giriş yapamaz; hesap kimliği ve ders kayıtları korunarak şifre şöyle belirlenir:
+   - **Öğrenci:** Öğretmen panelindeki **Kurtarma Kodu Üret** ile öğrencinin adına tek kullanımlık, 24 saat geçerli bir kod üretilir (veritabanında yalnızca
+     özeti tutulur). Öğrenci girişteki **Şifresiz hesabı kurtar** bağlantısında adını, kodu ve yeni şifresini girer. Hatalı kodlar giriş kilidine sayılır.
+   - **Öğretmen:** Aynı bağlantıda **Öğretmen (kurulum anahtarı)** seçilir; şifresiz öğretmen hesabına kurucu anahtarıyla bir kez şifre belirlenir.
 ---
 
 ## 👨‍🎓 Öğrenci Özellikleri
