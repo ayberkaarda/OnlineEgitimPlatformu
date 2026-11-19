@@ -91,6 +91,31 @@ public sealed class CourseManagementUiTests
         Assert.True(form.Saved);
     });
 
+    /// <summary>
+    /// A capacity set in the database above the application's limit (the CHECK constraint only requires
+    /// at least 0) opens at the limit with a warning instead of throwing from the field.
+    /// </summary>
+    [Fact]
+    public void BeginEdit_CapacityAboveTheMaximum_DoesNotThrow() => Run(() =>
+    {
+        var courses = new ControlledCourseService();
+        var prompts = new RecordingPrompts();
+        using var form = new KursEklemeForm(courses, Sessions.Teacher) { Prompts = prompts };
+
+        form.BeginEdit(courses.Courses[0] with { Capacity = 5000 });
+
+        Assert.Equal(Business.Validation.InputRules.CourseCapacityMax, form.Capacity);
+        Assert.Equal([KursEklemeForm.CapacityOutOfRange(5000)], prompts.Messages);
+        Assert.Contains("5000", prompts.Messages[0], StringComparison.Ordinal);
+        Assert.False(Find<CheckBox>(form, "chkSinirsiz").Checked);
+
+        // A capacity inside the limit opens as it is, without a warning.
+        using var other = new KursEklemeForm(courses, Sessions.Teacher) { Prompts = prompts };
+        other.BeginEdit(courses.Courses[0] with { Capacity = Business.Validation.InputRules.CourseCapacityMax });
+        Assert.Equal(Business.Validation.InputRules.CourseCapacityMax, other.Capacity);
+        Assert.Single(prompts.Messages);
+    });
+
     [Fact]
     public void Create_UnlimitedByDefaultAndNumberWhenUnticked() => Run(() =>
     {
