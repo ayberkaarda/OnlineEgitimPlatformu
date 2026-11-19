@@ -40,6 +40,20 @@ internal sealed record StudentNameInput(string? FullName)
     public static StudentNameInput Create(string? fullName) => new(InputRules.Clean(fullName));
 }
 
+/// <summary>A teacher account an administrator creates. Name and specialty are cleaned.</summary>
+internal sealed record TeacherAccountInput(string? FullName, string? Specialty)
+{
+    public static TeacherAccountInput Create(string? fullName, string? specialty) =>
+        new(InputRules.Clean(fullName), InputRules.Clean(specialty));
+}
+
+/// <summary>A student account an administrator creates. Name and e-mail address are cleaned.</summary>
+internal sealed record StudentAccountInput(string? FullName, string? Email)
+{
+    public static StudentAccountInput Create(string? fullName, string? email) =>
+        new(InputRules.Clean(fullName), InputRules.Clean(email));
+}
+
 /// <summary>A new or changed course. Name and topic are cleaned; no capacity means no limit.</summary>
 internal sealed record CourseInput(string? Name, string? Topic, int? Capacity)
 {

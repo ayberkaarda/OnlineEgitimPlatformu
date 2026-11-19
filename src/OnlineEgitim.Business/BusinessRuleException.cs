@@ -22,6 +22,30 @@ public sealed class BusinessRuleException : Exception
 }
 
 /// <summary>
+/// Raised when a session is no longer valid: the account was disabled, its password was reset or
+/// changed, or its role changed since the session was issued. The user has to sign in again.
+/// </summary>
+public sealed class SessionExpiredException : Exception
+{
+    internal const string DefaultMessage = "Oturumunuz sona erdi. Lütfen yeniden giriş yapın.";
+
+    public SessionExpiredException()
+        : base(DefaultMessage)
+    {
+    }
+
+    public SessionExpiredException(string message)
+        : base(message)
+    {
+    }
+
+    public SessionExpiredException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+}
+
+/// <summary>
 /// Raised when the signed-in account tries to see or change data that does not belong to it. The
 /// message is fixed and does not reveal whether the requested record exists.
 /// </summary>

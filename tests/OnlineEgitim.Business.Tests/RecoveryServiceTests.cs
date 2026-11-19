@@ -26,6 +26,7 @@ public sealed class RecoveryServiceTests
         new SetupKeyGate(TimeProvider.System, new SetupKeyThrottle(TimeSpan.Zero)),
         new FakeTimeProvider(Now),
         _audit,
+        CurrentSessions.Instance,
         Validators.StudentName,
         Validators.NewPassword);
 
@@ -42,7 +43,7 @@ public sealed class RecoveryServiceTests
     {
         var issued = _hasher.Inner.Hash(CodeFormat.Normalize(IssuedCode));
         var now = Now.UtcDateTime;
-        StudentRecoveryState? student = state switch
+        AccountRecoveryState? student = state switch
         {
             "unknown" => null,
             "no code" => new(4, "Şifresiz Öğrenci", PasswordFormat.None, null, null, null),
@@ -52,7 +53,7 @@ public sealed class RecoveryServiceTests
             "has password" => new(4, "Şifresiz Öğrenci", PasswordFormat.Pbkdf2, null, null, null),
             _ => throw new ArgumentOutOfRangeException(nameof(state)),
         };
-        _accounts.Setup(a => a.FindStudentRecoveryAsync("Şifresiz Öğrenci", It.IsAny<CancellationToken>())).ReturnsAsync(student);
+        _accounts.Setup(a => a.FindRecoveryAsync(AccountRole.Student, "Şifresiz Öğrenci", It.IsAny<CancellationToken>())).ReturnsAsync(student);
         _accounts.Setup(a => a.RecordFailedLoginAsync(AccountRole.Student, 4, LoginPolicy.MaxFailedAttempts, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
@@ -61,16 +62,17 @@ public sealed class RecoveryServiceTests
 
         Assert.Equal(RecoveryService.StudentRecoveryFailed, error.Message);
         Assert.Equal(1, _hasher.WorkUnits);
-        _accounts.Verify(a => a.CompleteStudentRecoveryAsync(It.IsAny<StudentRecoveryState>(), It.IsAny<DateTime>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _accounts.Verify(a => a.CompleteRecoveryAsync(AccountRole.Student, It.IsAny<AccountRecoveryState>(), It.IsAny<DateTime>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
     public async Task Recovery_RightCode_VerifiesOnceAndCompletes()
     {
         var issued = _hasher.Inner.Hash(CodeFormat.Normalize(IssuedCode));
-        var student = new StudentRecoveryState(4, "Şifresiz Öğrenci", PasswordFormat.None, issued, Now.UtcDateTime.AddHours(1), null);
-        _accounts.Setup(a => a.FindStudentRecoveryAsync("Şifresiz Öğrenci", It.IsAny<CancellationToken>())).ReturnsAsync(student);
-        _accounts.Setup(a => a.CompleteStudentRecoveryAsync(student, Now.UtcDateTime, It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        var student = new AccountRecoveryState(4, "Şifresiz Öğrenci", PasswordFormat.None, issued, Now.UtcDateTime.AddHours(1), null);
+        _accounts.Setup(a => a.FindRecoveryAsync(AccountRole.Student, "Şifresiz Öğrenci", It.IsAny<CancellationToken>())).ReturnsAsync(student);
+        _accounts.Setup(a => a.CompleteRecoveryAsync(AccountRole.Student, student, Now.UtcDateTime, It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _accounts.Setup(a => a.GetSessionStateAsync(AccountRole.Student, 4, It.IsAny<CancellationToken>())).ReturnsAsync(new SessionState(AccountRole.Student, false, 1));
 
         var session = await Service.RecoverStudentAsync("Şifresiz Öğrenci", IssuedCode.ToLowerInvariant(), "Yeni.Sifre1", "Yeni.Sifre1", Ct);
 

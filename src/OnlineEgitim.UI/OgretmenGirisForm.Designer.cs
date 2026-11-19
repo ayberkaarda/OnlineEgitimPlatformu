@@ -1,4 +1,4 @@
-﻿namespace OnlineEgitim.UI
+namespace OnlineEgitim.UI
 {
     partial class OgretmenGirisForm
     {
@@ -31,9 +31,9 @@
             this.label3.Font = new System.Drawing.Font("Microsoft Sans Serif", 12F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(162)));
             this.label3.Location = new System.Drawing.Point(12, 9);
             this.label3.Name = "label3";
-            this.label3.Size = new System.Drawing.Size(130, 20);
+            this.label3.Size = new System.Drawing.Size(230, 20);
             this.label3.TabIndex = 12;
-            this.label3.Text = "Öğretmen Giriş";
+            this.label3.Text = "Öğretmen / Yönetici Girişi";
             // 
             // btnGiris
             // 
@@ -103,7 +103,7 @@
             this.MinimizeBox = false;
             this.Name = "OgretmenGirisForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-            this.Text = "Öğretmen Giriş";
+            this.Text = "Öğretmen / Yönetici Girişi";
             this.ResumeLayout(false);
             this.PerformLayout();
 

@@ -14,12 +14,22 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
         ArgumentNullException.ThrowIfNull(fullName);
 
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        return role switch
+        if (IsStaff(role))
         {
-            AccountRole.Student => await FindAsync(db.Students, fullName, cancellationToken).ConfigureAwait(false),
-            AccountRole.Teacher => await FindAsync(db.Teachers, fullName, cancellationToken).ConfigureAwait(false),
-            _ => throw new ArgumentOutOfRangeException(nameof(role), role, "Unknown role."),
-        };
+            return await db.Teachers
+                .AsNoTracking()
+                .Where(t => t.FullName == fullName)
+                .Select(t => new AccountCredentials(t.Id, t.FullName, t.PasswordHash, t.PasswordFormat, t.FailedLoginCount, t.LockoutEnd, t.Role, t.Disabled, t.SessionVersion))
+                .SingleOrDefaultAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return await db.Students
+            .AsNoTracking()
+            .Where(s => s.FullName == fullName)
+            .Select(s => new AccountCredentials(s.Id, s.FullName, s.PasswordHash, s.PasswordFormat, s.FailedLoginCount, s.LockoutEnd, AccountRole.Student, s.Disabled, s.SessionVersion))
+            .SingleOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async Task RecordFailedLoginAsync(
@@ -30,12 +40,9 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
         CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        _ = role switch
-        {
-            AccountRole.Student => await RecordFailedLoginAsync(db.Students, id, maxAttempts, lockoutEnd, cancellationToken).ConfigureAwait(false),
-            AccountRole.Teacher => await RecordFailedLoginAsync(db.Teachers, id, maxAttempts, lockoutEnd, cancellationToken).ConfigureAwait(false),
-            _ => throw new ArgumentOutOfRangeException(nameof(role), role, "Unknown role."),
-        };
+        _ = IsStaff(role)
+            ? await RecordFailedLoginAsync(db.Teachers, id, maxAttempts, lockoutEnd, cancellationToken).ConfigureAwait(false)
+            : await RecordFailedLoginAsync(db.Students, id, maxAttempts, lockoutEnd, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<bool> RecordSuccessfulLoginAsync(
@@ -48,12 +55,9 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
         ArgumentNullException.ThrowIfNull(verified);
 
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        var updated = role switch
-        {
-            AccountRole.Student => await RecordSuccessfulLoginAsync(db.Students, verified, now, newPasswordHash, cancellationToken).ConfigureAwait(false),
-            AccountRole.Teacher => await RecordSuccessfulLoginAsync(db.Teachers, verified, now, newPasswordHash, cancellationToken).ConfigureAwait(false),
-            _ => throw new ArgumentOutOfRangeException(nameof(role), role, "Unknown role."),
-        };
+        var updated = IsStaff(role)
+            ? await RecordSuccessfulLoginAsync(db.Teachers, verified, now, newPasswordHash, cancellationToken).ConfigureAwait(false)
+            : await RecordSuccessfulLoginAsync(db.Students, verified, now, newPasswordHash, cancellationToken).ConfigureAwait(false);
         return updated == 1;
     }
 
@@ -77,6 +81,8 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
             Email = student.Email,
             PasswordHash = student.PasswordHash,
             PasswordFormat = student.PasswordFormat,
+            RecoveryCodeHash = student.RecoveryCodeHash,
+            RecoveryCodeExpires = student.RecoveryCodeExpires,
         };
         db.Students.Add(entity);
 
@@ -115,72 +121,83 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
     public async Task<SetupStage> GetSetupStageAsync(CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        if (await db.Teachers.AnyAsync(t => t.PasswordFormat != PasswordFormat.None, cancellationToken).ConfigureAwait(false))
+        if (await AnyTeacherWithPasswordAsync(db, cancellationToken).ConfigureAwait(false))
         {
             return SetupStage.Completed;
         }
 
         if (await db.Teachers.AnyAsync(cancellationToken).ConfigureAwait(false))
         {
-            return SetupStage.TeacherPasswordNeedsKey;
+            return SetupStage.StaffPasswordNeedsKey;
         }
 
         return await db.Students.AnyAsync(cancellationToken).ConfigureAwait(false)
-            ? SetupStage.FirstTeacherNeedsKey
+            ? SetupStage.FirstAdminNeedsKey
             : SetupStage.EmptyDatabase;
     }
 
-    public async Task<FirstTeacherResult> AddFirstTeacherAsync(Teacher teacher, SetupKeyAttempt? setupKey, CancellationToken cancellationToken = default)
+    public async Task<FirstAdminResult> AddFirstAdminAsync(Teacher admin, SetupKeyAttempt? setupKey, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(teacher);
+        ArgumentNullException.ThrowIfNull(admin);
 
         try
         {
             await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
 
-            // Serializable: the emptiness check holds a range lock until the commit, so two concurrent
-            // setups can never both insert. On SQL Server the check takes an update lock, which a second
-            // setup has to wait for, so the loser sees the winner's row instead of becoming a deadlock victim.
+            // Serializable: the checks hold range locks until the commit, so two concurrent setups can
+            // never both insert. On SQL Server the first check takes an update lock on the staff table,
+            // which a second setup has to wait for, so the loser sees the winner's row instead of
+            // becoming a deadlock victim.
             await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken).ConfigureAwait(false);
-            if (await AccountLocks.AnyTeacherLockedAsync(db, cancellationToken).ConfigureAwait(false))
+            var anyStaff = await AccountLocks.AnyTeacherLockedAsync(db, cancellationToken).ConfigureAwait(false);
+            if (await db.Teachers.AnyAsync(t => t.Role == AccountRole.Admin, cancellationToken).ConfigureAwait(false))
             {
-                return new FirstTeacherResult(FirstTeacherStatus.TeacherExists, 0);
+                return new FirstAdminResult(FirstAdminStatus.AdminExists, 0);
             }
 
-            // An empty database is set up by whoever opens it first. Once students exist, the first
-            // teacher needs the setup key, decided while the locks are held and used up in this
+            // A teacher who signs in with a password is the end of every setup key: such a database gets
+            // its administrator from the database owner (docs/promote-admin.sql).
+            if (await AnyTeacherWithPasswordAsync(db, cancellationToken).ConfigureAwait(false))
+            {
+                return new FirstAdminResult(FirstAdminStatus.SetupCompleted, 0);
+            }
+
+            // An empty database is set up by whoever opens it first. Once accounts exist, the first
+            // administrator needs the setup key, decided while the locks are held and used up in this
             // transaction: a failed write below rolls the use back.
-            if (await AccountLocks.AnyStudentLockedAsync(db, cancellationToken).ConfigureAwait(false))
+            if (anyStaff | await AccountLocks.AnyStudentLockedAsync(db, cancellationToken).ConfigureAwait(false))
             {
                 if (setupKey is null)
                 {
-                    return new FirstTeacherResult(FirstTeacherStatus.KeyRequired, 0);
+                    return new FirstAdminResult(FirstAdminStatus.KeyRequired, 0);
                 }
 
                 if (!await UseSetupKeyAsync(db, setupKey, cancellationToken).ConfigureAwait(false))
                 {
-                    return new FirstTeacherResult(FirstTeacherStatus.NotAuthorized, 0);
+                    return new FirstAdminResult(FirstAdminStatus.NotAuthorized, 0);
                 }
             }
 
             var entity = new Teacher
             {
-                FullName = teacher.FullName,
-                Specialty = teacher.Specialty,
-                PasswordHash = teacher.PasswordHash,
-                PasswordFormat = teacher.PasswordFormat,
+                FullName = admin.FullName,
+                Specialty = admin.Specialty,
+                PasswordHash = admin.PasswordHash,
+                PasswordFormat = admin.PasswordFormat,
+                Role = AccountRole.Admin,
             };
             db.Teachers.Add(entity);
             await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-            return new FirstTeacherResult(FirstTeacherStatus.Created, entity.Id);
+            return new FirstAdminResult(FirstAdminStatus.Created, entity.Id);
         }
         catch (Exception ex) when (ex is DbUpdateException or DbException || ex.InnerException is DbUpdateException or DbException)
         {
             // Lost the race (deadlock victim or a rejected insert); the winner's row decides.
-            if (await AnyTeacherAsync(CancellationToken.None).ConfigureAwait(false))
+            await using var db = await contextFactory.CreateDbContextAsync(CancellationToken.None).ConfigureAwait(false);
+            if (await db.Teachers.AnyAsync(t => t.Role == AccountRole.Admin, CancellationToken.None).ConfigureAwait(false))
             {
-                return new FirstTeacherResult(FirstTeacherStatus.TeacherExists, 0);
+                return new FirstAdminResult(FirstAdminStatus.AdminExists, 0);
             }
 
             throw;
@@ -193,20 +210,51 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
         return await db.Teachers
             .AsNoTracking()
             .Where(t => t.Id == id)
-            .Select(t => new TeacherProfile(t.Id, t.FullName, t.Specialty))
+            .Select(t => new TeacherProfile(t.Id, t.FullName, t.Specialty, t.Role))
             .SingleOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
     }
 
-    public async Task<StudentRecoveryState?> FindStudentRecoveryAsync(string fullName, CancellationToken cancellationToken = default)
+    public async Task<AccountRecoveryState?> FindRecoveryAsync(AccountRole role, string fullName, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(fullName);
 
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        if (IsStaff(role))
+        {
+            return await db.Teachers
+                .AsNoTracking()
+                .Where(t => t.FullName == fullName)
+                .Select(t => new AccountRecoveryState(t.Id, t.FullName, t.PasswordFormat, t.RecoveryCodeHash, t.RecoveryCodeExpires, t.LockoutEnd, t.Role, t.Disabled))
+                .SingleOrDefaultAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         return await db.Students
             .AsNoTracking()
             .Where(s => s.FullName == fullName)
-            .Select(s => new StudentRecoveryState(s.Id, s.FullName, s.PasswordFormat, s.RecoveryCodeHash, s.RecoveryCodeExpires, s.LockoutEnd))
+            .Select(s => new AccountRecoveryState(s.Id, s.FullName, s.PasswordFormat, s.RecoveryCodeHash, s.RecoveryCodeExpires, s.LockoutEnd, AccountRole.Student, s.Disabled))
+            .SingleOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<SessionState?> GetSessionStateAsync(AccountRole role, int id, CancellationToken cancellationToken = default)
+    {
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        if (IsStaff(role))
+        {
+            return await db.Teachers
+                .AsNoTracking()
+                .Where(t => t.Id == id)
+                .Select(t => new SessionState(t.Role, t.Disabled, t.SessionVersion))
+                .SingleOrDefaultAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return await db.Students
+            .AsNoTracking()
+            .Where(s => s.Id == id)
+            .Select(s => new SessionState(AccountRole.Student, s.Disabled, s.SessionVersion))
             .SingleOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
     }
@@ -233,25 +281,55 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
         return updated == 1;
     }
 
-    // The WHERE clause is the final decision, as for a sign-in: a code replaced or used since it was
-    // verified, a password set meanwhile, an expiry or a lock make the statement match no row.
-    public async Task<bool> CompleteStudentRecoveryAsync(StudentRecoveryState verified, DateTime now, string newPasswordHash, CancellationToken cancellationToken = default)
+    public async Task<bool> CompleteRecoveryAsync(
+        AccountRole role,
+        AccountRecoveryState verified,
+        DateTime now,
+        string newPasswordHash,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(verified);
         ArgumentNullException.ThrowIfNull(newPasswordHash);
-        if (verified.RecoveryCodeHash is not { } codeHash)
+        if (verified.RecoveryCodeHash is null)
         {
             return false;
         }
 
-        var id = verified.Id;
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        var updated = await db.Students
-            .Where(s => s.Id == id
-                && s.PasswordFormat == PasswordFormat.None
-                && s.RecoveryCodeHash == codeHash
-                && s.RecoveryCodeExpires > now
-                && (s.LockoutEnd == null || s.LockoutEnd <= now))
+        var updated = IsStaff(role)
+            ? await CompleteRecoveryAsync(db.Teachers, verified, now, newPasswordHash, cancellationToken).ConfigureAwait(false)
+            : await CompleteRecoveryAsync(db.Students, verified, now, newPasswordHash, cancellationToken).ConfigureAwait(false);
+        return updated == 1;
+    }
+
+    /// <summary>Teachers and administrators share the staff table (Egitmenler).</summary>
+    private static bool IsStaff(AccountRole role) => role switch
+    {
+        AccountRole.Student => false,
+        AccountRole.Teacher or AccountRole.Admin => true,
+        _ => throw new ArgumentOutOfRangeException(nameof(role), role, "Unknown role."),
+    };
+
+    // The WHERE clause is the final decision, as for a sign-in: a code replaced or used since it was
+    // verified, a password set meanwhile, an expiry, a lock or a disabled account make the statement
+    // match no row. The new session version ends every session issued before.
+    private static Task<int> CompleteRecoveryAsync<TAccount>(
+        DbSet<TAccount> accounts,
+        AccountRecoveryState verified,
+        DateTime now,
+        string newPasswordHash,
+        CancellationToken cancellationToken)
+        where TAccount : Account
+    {
+        var id = verified.Id;
+        var codeHash = verified.RecoveryCodeHash;
+        return accounts
+            .Where(a => a.Id == id
+                && a.PasswordFormat == PasswordFormat.None
+                && a.RecoveryCodeHash == codeHash
+                && a.RecoveryCodeExpires > now
+                && !a.Disabled
+                && (a.LockoutEnd == null || a.LockoutEnd <= now))
             .ExecuteUpdateAsync(
                 s => s
                     .SetProperty(a => a.PasswordHash, newPasswordHash)
@@ -259,10 +337,9 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
                     .SetProperty(a => a.RecoveryCodeHash, (string?)null)
                     .SetProperty(a => a.RecoveryCodeExpires, (DateTime?)null)
                     .SetProperty(a => a.FailedLoginCount, 0)
-                    .SetProperty(a => a.LockoutEnd, (DateTime?)null),
-                cancellationToken)
-            .ConfigureAwait(false);
-        return updated == 1;
+                    .SetProperty(a => a.LockoutEnd, (DateTime?)null)
+                    .SetProperty(a => a.SessionVersion, a => a.SessionVersion + 1),
+                cancellationToken);
     }
 
     public async Task<SetupKeyWriteResult> SetFirstPasswordWithSetupKeyAsync(
@@ -275,10 +352,6 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
         ArgumentNullException.ThrowIfNull(fullName);
         ArgumentNullException.ThrowIfNull(newPasswordHash);
         ArgumentNullException.ThrowIfNull(setupKey);
-        if (role is not (AccountRole.Student or AccountRole.Teacher))
-        {
-            throw new ArgumentOutOfRangeException(nameof(role), role, "Unknown role.");
-        }
 
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken).ConfigureAwait(false);
@@ -298,7 +371,7 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
         }
 
         // Returning before the commit rolls the key's use back.
-        var id = role == AccountRole.Teacher
+        var id = IsStaff(role)
             ? await SetFirstTeacherPasswordAsync(db, fullName, newPasswordHash, cancellationToken).ConfigureAwait(false)
             : await SetFirstStudentPasswordAsync(db, fullName, newPasswordHash, cancellationToken).ConfigureAwait(false);
         if (id is not { } accountId)
@@ -416,14 +489,6 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
         return updated == 1 ? id : null;
     }
 
-    private static Task<AccountCredentials?> FindAsync<TAccount>(DbSet<TAccount> accounts, string fullName, CancellationToken cancellationToken)
-        where TAccount : Account =>
-        accounts
-            .AsNoTracking()
-            .Where(a => a.FullName == fullName)
-            .Select(a => new AccountCredentials(a.Id, a.FullName, a.PasswordHash, a.PasswordFormat, a.FailedLoginCount, a.LockoutEnd))
-            .SingleOrDefaultAsync(cancellationToken);
-
     // One UPDATE statement, so concurrent failures cannot lose increments.
     private static Task<int> RecordFailedLoginAsync<TAccount>(
         DbSet<TAccount> accounts,
@@ -440,8 +505,9 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
                     .SetProperty(a => a.FailedLoginCount, a => a.FailedLoginCount + 1 >= maxAttempts ? 0 : a.FailedLoginCount + 1),
                 cancellationToken);
 
-    // The WHERE clause is the final decision: a lock set by a concurrent failure, or a password
-    // changed since it was verified, makes the statement match no row and the sign-in fails.
+    // The WHERE clause is the final decision: a lock set by a concurrent failure, a password changed,
+    // an account disabled or its sessions ended since it was verified make the statement match no row
+    // and the sign-in fails.
     private static Task<int> RecordSuccessfulLoginAsync<TAccount>(
         DbSet<TAccount> accounts,
         AccountCredentials verified,
@@ -455,12 +521,15 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
         var verifiedFormat = verified.PasswordFormat;
         var hash = newPasswordHash ?? verifiedHash;
         var format = newPasswordHash is null ? verifiedFormat : PasswordFormat.Pbkdf2;
+        var version = verified.SessionVersion;
 
         return accounts
             .Where(a => a.Id == id
                 && (a.LockoutEnd == null || a.LockoutEnd <= now)
                 && a.PasswordHash == verifiedHash
-                && a.PasswordFormat == verifiedFormat)
+                && a.PasswordFormat == verifiedFormat
+                && !a.Disabled
+                && a.SessionVersion == version)
             .ExecuteUpdateAsync(
                 s => s
                     .SetProperty(a => a.FailedLoginCount, 0)

@@ -202,11 +202,11 @@ internal sealed class PendingSetupService : ISetupService
 
     public Task<bool> IsSetupRequiredAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
 
-    public Task<SetupStage> GetStageAsync(CancellationToken cancellationToken = default) => Task.FromResult(SetupStage.FirstTeacherNeedsKey);
+    public Task<SetupStage> GetStageAsync(CancellationToken cancellationToken = default) => Task.FromResult(SetupStage.FirstAdminNeedsKey);
 
     public SetupKeyPrefill GetEnvironmentKey() => EnvironmentKey;
 
-    public Task<UserSession> CreateFirstTeacherAsync(
+    public Task<UserSession> CreateFirstAdminAsync(
         string? setupKey,
         string? fullName,
         string? specialty,

@@ -60,7 +60,7 @@ namespace OnlineEgitim.UI
             this.lblAciklama.Name = "lblAciklama";
             this.lblAciklama.Size = new System.Drawing.Size(452, 96);
             this.lblAciklama.TabIndex = 1;
-            this.lblAciklama.Text = "Henüz bir öğretmen hesabı yok.";
+            this.lblAciklama.Text = "Henüz bir yönetici hesabı yok.";
             //
             // label5
             //
@@ -100,9 +100,9 @@ namespace OnlineEgitim.UI
             this.label2.AutoSize = true;
             this.label2.Location = new System.Drawing.Point(13, 213);
             this.label2.Name = "label2";
-            this.label2.Size = new System.Drawing.Size(95, 16);
+            this.label2.Size = new System.Drawing.Size(110, 16);
             this.label2.TabIndex = 6;
-            this.label2.Text = "Uzmanlık Alanı";
+            this.label2.Text = "Görev / Uzmanlık";
             //
             // txtUzmanlik
             //

@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using OnlineEgitim.Data.Repositories;
 using OnlineEgitim.Domain.Entities;
 using OnlineEgitim.Domain.Repositories;
@@ -72,20 +72,23 @@ internal static class SuccessWriteGateExtensions
         public Task<SetupStage> GetSetupStageAsync(CancellationToken cancellationToken = default) =>
             inner.GetSetupStageAsync(cancellationToken);
 
-        public Task<FirstTeacherResult> AddFirstTeacherAsync(Teacher teacher, SetupKeyAttempt? setupKey, CancellationToken cancellationToken = default) =>
-            inner.AddFirstTeacherAsync(teacher, setupKey, cancellationToken);
+        public Task<FirstAdminResult> AddFirstAdminAsync(Teacher admin, SetupKeyAttempt? setupKey, CancellationToken cancellationToken = default) =>
+            inner.AddFirstAdminAsync(admin, setupKey, cancellationToken);
 
         public Task<TeacherProfile?> GetTeacherAsync(int id, CancellationToken cancellationToken = default) =>
             inner.GetTeacherAsync(id, cancellationToken);
 
-        public Task<StudentRecoveryState?> FindStudentRecoveryAsync(string fullName, CancellationToken cancellationToken = default) =>
-            inner.FindStudentRecoveryAsync(fullName, cancellationToken);
+        public Task<AccountRecoveryState?> FindRecoveryAsync(AccountRole role, string fullName, CancellationToken cancellationToken = default) =>
+            inner.FindRecoveryAsync(role, fullName, cancellationToken);
+
+        public Task<SessionState?> GetSessionStateAsync(AccountRole role, int id, CancellationToken cancellationToken = default) =>
+            inner.GetSessionStateAsync(role, id, cancellationToken);
 
         public Task<bool> SetRecoveryCodeAsync(int teacherId, string studentName, string codeHash, DateTime expires, CancellationToken cancellationToken = default) =>
             inner.SetRecoveryCodeAsync(teacherId, studentName, codeHash, expires, cancellationToken);
 
-        public Task<bool> CompleteStudentRecoveryAsync(StudentRecoveryState verified, DateTime now, string newPasswordHash, CancellationToken cancellationToken = default) =>
-            inner.CompleteStudentRecoveryAsync(verified, now, newPasswordHash, cancellationToken);
+        public Task<bool> CompleteRecoveryAsync(AccountRole role, AccountRecoveryState verified, DateTime now, string newPasswordHash, CancellationToken cancellationToken = default) =>
+            inner.CompleteRecoveryAsync(role, verified, now, newPasswordHash, cancellationToken);
 
         public Task<SetupKeyWriteResult> SetFirstPasswordWithSetupKeyAsync(
             AccountRole role,

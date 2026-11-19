@@ -14,8 +14,11 @@ public interface IAuthService
     /// <exception cref="BusinessRuleException">Wrong credentials, missing input or a locked account.</exception>
     Task<UserSession> SignInStudentAsync(string? fullName, string? password, CancellationToken cancellationToken = default);
 
-    /// <summary>Signs a teacher in with the name and password, as the original teacher sign-in did.</summary>
-    /// <exception cref="BusinessRuleException">Wrong credentials, missing input or a locked account.</exception>
+    /// <summary>
+    /// Signs a teacher or an administrator in with the name and password (the staff sign-in, as the
+    /// original teacher sign-in did); the session has the account's own role.
+    /// </summary>
+    /// <exception cref="BusinessRuleException">Wrong credentials, missing input, a locked or a disabled account.</exception>
     Task<UserSession> SignInTeacherAsync(string? fullName, string? password, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -35,8 +38,8 @@ internal sealed class AuthService(
     IValidator<RegistrationInput> registrationValidator,
     IValidator<SignInInput> signInValidator) : IAuthService
 {
-    // Every refused sign-in (unknown name, wrong password, no password, locked account, a lost race)
-    // gets this one answer and one audit event; the lockout rule itself is stated for everyone.
+    // Every refused sign-in (unknown name, wrong password, no password, locked or disabled account, a
+    // lost race) gets this one answer and one audit event; the lockout rule itself is stated for everyone.
     internal static readonly string CredentialsInvalid = string.Create(
         CultureInfo.InvariantCulture,
         $"Giriş başarısız. Ad veya şifre hatalı. {LoginPolicy.MaxFailedAttempts} hatalı denemeden sonra giriş {LoginPolicy.LockoutDuration.TotalMinutes:0} dakika engellenir.");
@@ -106,10 +109,10 @@ internal sealed class AuthService(
         }
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
-        if (account.LockoutEnd > now)
+        if (account.LockoutEnd > now || account.Disabled)
         {
             // Same answer and about the same cost as a wrong password; nothing is written, so the
-            // lock neither grows nor ends early.
+            // lock neither grows nor ends early, and a disabled account is not locked by guessing.
             passwordHasher.SimulateVerification(password);
             throw Refused(role);
         }
@@ -144,11 +147,11 @@ internal sealed class AuthService(
 
         if (newHash is not null)
         {
-            audit.Record(AuditEvent.PasswordUpgraded, role);
+            audit.Record(AuditEvent.PasswordUpgraded, account.Role);
         }
 
-        audit.Record(AuditEvent.SignInSucceeded, role);
-        return new UserSession(role, account.Id, account.FullName);
+        audit.Record(AuditEvent.SignInSucceeded, account.Role);
+        return new UserSession(account.Role, account.Id, account.FullName, account.SessionVersion);
     }
 
     private BusinessRuleException Refused(AccountRole role)

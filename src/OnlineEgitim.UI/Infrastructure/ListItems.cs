@@ -32,3 +32,32 @@ internal sealed record CourseItem(CourseSummary Course, CourseItemStyle Style, b
 
     private string Seats => Course.Capacity is { } capacity ? capacity.ToString(CultureInfo.CurrentCulture) : "sınırsız";
 }
+
+/// <summary>An account in the administrators' list: "[Öğretmen] Ad - Uzmanlık (devre dışı, şifresiz)".</summary>
+internal sealed record AccountItem(AccountListing Account)
+{
+    public override string ToString()
+    {
+        var notes = new List<string>(2);
+        if (Account.Disabled)
+        {
+            notes.Add("devre dışı");
+        }
+
+        if (!Account.HasPassword)
+        {
+            notes.Add("şifresiz");
+        }
+
+        var suffix = notes.Count > 0 ? " (" + string.Join(", ", notes) + ")" : string.Empty;
+        return $"[{RoleName(Account.Role)}] {Account.FullName} - {Account.Detail}{suffix}";
+    }
+
+    internal static string RoleName(AccountRole role) => role switch
+    {
+        AccountRole.Student => "Öğrenci",
+        AccountRole.Teacher => "Öğretmen",
+        AccountRole.Admin => "Yönetici",
+        _ => "?",
+    };
+}

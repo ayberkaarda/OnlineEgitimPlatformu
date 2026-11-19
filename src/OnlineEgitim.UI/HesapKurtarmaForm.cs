@@ -6,15 +6,16 @@ using OnlineEgitim.UI.Infrastructure;
 namespace OnlineEgitim.UI
 {
     /// <summary>
-    /// First password for an account the original application left without one. A student proves the
-    /// right with the single use code a teacher issued; while no teacher can sign in with a password,
-    /// the founder uses the setup key the database owner created.
+    /// A password for an account without one: left so by the original application or created by an
+    /// administrator. The person proves the right with the single use code a teacher (for their
+    /// students) or an administrator issued; while no teacher or administrator can sign in with a
+    /// password, the founder may use the setup key the database owner created instead.
     /// Closes with <see cref="DialogResult.OK"/> and <see cref="Session"/> set on success.
     /// </summary>
     public partial class HesapKurtarmaForm : Form
     {
         internal const string StudentHint =
-            "Eski sistemden şifresiz kalan öğrenci hesapları için dersinizin öğretmeninden tek kullanımlık bir kurtarma kodu isteyin. "
+            "Dersinizin öğretmeninden veya yöneticiden tek kullanımlık bir kurtarma kodu isteyin; kod 24 saat geçerlidir. "
             + "Kodla yeni şifrenizi belirlediğinizde hesabınız ve ders kayıtlarınız aynen korunur.";
 
         internal const string StudentHintWithSetupKey =
@@ -22,7 +23,10 @@ namespace OnlineEgitim.UI
             + "bir derse kayıtlıysanız kodu o dersin öğretmeni üretir.";
 
         internal const string TeacherHint =
-            "Şifreyle giriş yapabilen bir öğretmen yokken, şifresi olmayan bir öğretmen hesabına kurulum anahtarıyla şifre belirlenir. "
+            "Öğretmen ve yönetici hesapları için yöneticinin verdiği tek kullanımlık kodu girin; kod 24 saat geçerlidir.";
+
+        internal const string TeacherHintWithSetupKey =
+            TeacherHint + " Şifreyle giriş yapabilen bir öğretmen veya yönetici yokken şifresiz bir hesaba kurulum anahtarıyla da şifre belirlenebilir. "
             + IlkKurulumForm.SetupKeySource;
 
         private bool _setupKeyAccepted;
@@ -54,8 +58,9 @@ namespace OnlineEgitim.UI
         }
 
         /// <summary>
-        /// Whether the founder's recovery with the setup key is offered: only while no teacher can sign
-        /// in with a password. The database decides again when the key is used.
+        /// Whether the founder's recovery with the setup key is offered: only while no teacher or
+        /// administrator can sign in with a password. The database decides again when the key is used.
+        /// The code is accepted in both modes at any time.
         /// </summary>
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         internal bool SetupKeyAccepted
@@ -64,12 +69,6 @@ namespace OnlineEgitim.UI
             set
             {
                 _setupKeyAccepted = value;
-                rbOgretmen.Enabled = value;
-                if (!value)
-                {
-                    TeacherMode = false;
-                }
-
                 ShowMode();
             }
         }
@@ -81,7 +80,7 @@ namespace OnlineEgitim.UI
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         internal IUserPrompts Prompts { get; set; }
 
-        /// <summary>Whether the teacher recovery (with the setup key) is selected.</summary>
+        /// <summary>Whether the staff recovery (teacher or administrator) is selected.</summary>
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         internal bool TeacherMode
         {
@@ -131,12 +130,17 @@ namespace OnlineEgitim.UI
         private void ShowMode()
         {
             txtKod.Clear();
-            if (TeacherMode)
+            if (TeacherMode && _setupKeyAccepted)
             {
                 var prefill = _setup.GetEnvironmentKey();
-                lblKod.Text = "Kurulum Anahtarı";
-                lblAciklama.Text = TeacherHint + (prefill.Invalid ? "\n" + IlkKurulumForm.EnvironmentKeyInvalid : string.Empty);
+                lblKod.Text = "Kod / Kurulum Anahtarı";
+                lblAciklama.Text = TeacherHintWithSetupKey + (prefill.Invalid ? "\n" + IlkKurulumForm.EnvironmentKeyInvalid : string.Empty);
                 txtKod.Text = prefill.Key ?? string.Empty;
+            }
+            else if (TeacherMode)
+            {
+                lblKod.Text = "Kurtarma Kodu";
+                lblAciklama.Text = TeacherHint;
             }
             else
             {

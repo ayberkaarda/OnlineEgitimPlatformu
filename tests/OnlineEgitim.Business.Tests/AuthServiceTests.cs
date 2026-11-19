@@ -25,7 +25,7 @@ public sealed class AuthServiceTests
     [Fact]
     public async Task SignIn_RightPassword_IssuesASessionOfTheRequestedRole()
     {
-        var account = Account(_hasher.Hash("Gizli.Sifre1"), PasswordFormat.Pbkdf2);
+        var account = Account(_hasher.Hash("Gizli.Sifre1"), PasswordFormat.Pbkdf2) with { Role = AccountRole.Teacher };
         Find(AccountRole.Teacher, account);
         _accounts.Setup(a => a.RecordSuccessfulLoginAsync(AccountRole.Teacher, account, Now, null, It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
@@ -75,6 +75,38 @@ public sealed class AuthServiceTests
         Assert.All(_audit.Events, e => Assert.Equal((AuditEvent.SignInFailed, (AccountRole?)AccountRole.Student), e));
     }
 
+    /// <summary>
+    /// A disabled account is refused with the message and audit code of a wrong password, costs one
+    /// verification and writes nothing, so guessing cannot lock it and the log does not tell it apart.
+    /// </summary>
+    [Fact]
+    public async Task SignIn_DisabledAccount_RefusedLikeAWrongPasswordAndWritesNothing()
+    {
+        Find(AccountRole.Student, Account(_hasher.Hash("Gizli.Sifre1"), PasswordFormat.Pbkdf2) with { Disabled = true });
+
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service.SignInStudentAsync("Deniz Örnek", "Gizli.Sifre1", Ct));
+
+        Assert.Equal(AuthService.CredentialsInvalid, error.Message);
+        Assert.Equal([(AuditEvent.SignInFailed, (AccountRole?)AccountRole.Student)], _audit.Events);
+        _accounts.Verify(a => a.RecordFailedLoginAsync(It.IsAny<AccountRole>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
+        _accounts.Verify(a => a.RecordSuccessfulLoginAsync(It.IsAny<AccountRole>(), It.IsAny<AccountCredentials>(), It.IsAny<DateTime>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    /// <summary>The staff sign-in issues the account's own role and session version: an administrator signs in as one.</summary>
+    [Fact]
+    public async Task SignIn_Administrator_GetsTheAdminRoleAndTheStoredSessionVersion()
+    {
+        var account = Account(_hasher.Hash("Gizli.Sifre1"), PasswordFormat.Pbkdf2) with { Role = AccountRole.Admin, SessionVersion = 4 };
+        Find(AccountRole.Teacher, account);
+        _accounts.Setup(a => a.RecordSuccessfulLoginAsync(AccountRole.Teacher, account, Now, null, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+
+        var session = await Service.SignInTeacherAsync("Deniz Örnek", "Gizli.Sifre1", Ct);
+
+        Assert.True(session.IsAdmin);
+        Assert.Equal(4, session.SessionVersion);
+        Assert.Equal([(AuditEvent.SignInSucceeded, (AccountRole?)AccountRole.Admin)], _audit.Events);
+    }
+
     [Fact]
     public async Task SignIn_LockedAccount_WritesNothing()
     {
@@ -88,7 +120,7 @@ public sealed class AuthServiceTests
     [Fact]
     public async Task SignIn_LegacyPlainText_IsReplacedByAHashInTheSuccessWrite()
     {
-        var account = Account("1234", PasswordFormat.LegacyPlainText);
+        var account = Account("1234", PasswordFormat.LegacyPlainText) with { Role = AccountRole.Teacher };
         Find(AccountRole.Teacher, account);
         string? written = null;
         _accounts

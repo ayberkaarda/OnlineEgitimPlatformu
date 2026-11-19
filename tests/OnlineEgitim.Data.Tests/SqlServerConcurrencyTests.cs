@@ -137,7 +137,7 @@ public sealed class SqlServerConcurrencyTests
                 {
                     var slot = Interlocked.Increment(ref index) - 1;
                     var name = "Kurucu " + (char)('A' + slot);
-                    return setups[slot].CreateFirstTeacherAsync(null, name, "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", ct);
+                    return setups[slot].CreateFirstAdminAsync(null, name, "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", ct);
                 },
                 ct);
 
@@ -172,7 +172,7 @@ public sealed class SqlServerConcurrencyTests
             {
                 var slot = Interlocked.Increment(ref index) - 1;
                 var key = slot == Contenders / 2 ? founderKey : Convert.ToHexString(BitConverter.GetBytes((long)slot)) + "0000000000000000";
-                return setup.CreateFirstTeacherAsync(key, "Kurucu " + (char)('A' + slot), "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", ct);
+                return setup.CreateFirstAdminAsync(key, "Kurucu " + (char)('A' + slot), "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", ct);
             },
             ct);
 
@@ -284,7 +284,7 @@ public sealed class SqlServerConcurrencyTests
             {
                 setup = Task.Run(
                     () => setupInstance.GetRequiredService<ISetupService>()
-                        .CreateFirstTeacherAsync(null, "Gerçek Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", token),
+                        .CreateFirstAdminAsync(null, "Gerçek Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", token),
                     token);
                 await WaitUntilBlockedOrDoneAsync(database, setup, token);
             });

@@ -62,6 +62,12 @@ public sealed class AuditTests
         { AuditEvent.CourseUpdated, 15, "course.updated" },
         { AuditEvent.CourseDeleted, 16, "course.deleted" },
         { AuditEvent.EnrollmentLeft, 17, "course.left" },
+        { AuditEvent.AccountCreated, 18, "admin.account.created" },
+        { AuditEvent.AccountDisabled, 19, "admin.account.disabled" },
+        { AuditEvent.AccountEnabled, 20, "admin.account.enabled" },
+        { AuditEvent.AdminDemoted, 21, "admin.role.demoted" },
+        { AuditEvent.SessionRejected, 22, "auth.session.rejected" },
+        { AuditEvent.FirstAdminCreated, 23, "setup.admin.created" },
     };
 
     [Theory]
@@ -86,6 +92,7 @@ public sealed class AuditTests
     [Theory]
     [InlineData(AccountRole.Student, "student")]
     [InlineData(AccountRole.Teacher, "teacher")]
+    [InlineData(AccountRole.Admin, "admin")]
     [InlineData(null, "none")]
     [InlineData((AccountRole)7, "unknown")]
     public void Code_OfRole_IsTheFixedValue(AccountRole? role, string code) => Assert.Equal(code, AuditCodes.Of(role));

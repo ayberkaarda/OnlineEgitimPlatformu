@@ -23,9 +23,9 @@ public sealed class LeaveAndSearchTests
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private EnrollmentService Enrollments => new(_enrollments.Object, _courses.Object, _clock, _audit);
+    private EnrollmentService Enrollments => new(_enrollments.Object, _courses.Object, _clock, _audit, CurrentSessions.Instance);
 
-    private CourseService Courses => new(_courses.Object, _enrollments.Object, _accounts.Object, _clock, _audit, Validators.Course, Validators.Note, Validators.CourseSearch);
+    private CourseService Courses => new(_courses.Object, _enrollments.Object, _accounts.Object, _clock, _audit, CurrentSessions.Instance, Validators.Course, Validators.Note, Validators.CourseSearch);
 
     [Fact]
     public async Task Leave_ClosesTheSessionsOwnEnrollmentAtTheClocksTime()
@@ -62,7 +62,7 @@ public sealed class LeaveAndSearchTests
         _enrollments.Setup(e => e.AddAsync(5, 3, Midnight, It.IsAny<CancellationToken>())).ReturnsAsync(EnrollmentStatus.RejoinTooSoon);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(
-            () => new EnrollmentService(_enrollments.Object, _courses.Object, clock, _audit).EnrollAsync(Sessions.Student(5), 3, Ct));
+            () => new EnrollmentService(_enrollments.Object, _courses.Object, clock, _audit, CurrentSessions.Instance).EnrollAsync(Sessions.Student(5), 3, Ct));
 
         Assert.Equal(EnrollmentService.RejoinTooSoon, error.Message);
         Assert.Empty(_audit.Events);

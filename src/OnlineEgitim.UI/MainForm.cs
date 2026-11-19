@@ -10,7 +10,7 @@ namespace OnlineEgitim.UI
     /// Student panel: the course catalogue with search, filters and pages, course details, joining and
     /// leaving a course and the student's own courses.
     /// </summary>
-    public partial class MainForm : Form
+    public partial class MainForm : Form, ISessionPanel
     {
         internal static string LeaveQuestion(string courseName) =>
             $"\"{courseName}\" dersinden ayrılmak istiyor musunuz? Ayrıldığınızda dersin notlarını göremezsiniz ve aynı gün yeniden kaydolamazsınız.";
@@ -22,6 +22,7 @@ namespace OnlineEgitim.UI
         private readonly ExclusiveOperation _write = new();
         private readonly RequestSequence _searchRequests = new();
         private readonly bool _ready;
+        private bool _signedOut;
         private int _pageIndex;
 
         public MainForm(ICourseService courses, IEnrollmentService enrollments, IFormFactory forms, UserSession session)
@@ -48,6 +49,17 @@ namespace OnlineEgitim.UI
             cmbKayit.SelectedIndex = 0; // set before _ready: not a choice of the user, no search
             _ready = true;
             Load += async (_, _) => await LoadAsync();
+        }
+
+        bool ISessionPanel.SignedOut => _signedOut;
+
+        /// <summary>Whether the session ended and the sign-in has to be shown again.</summary>
+        internal bool SignedOut => _signedOut;
+
+        void ISessionPanel.EndSession()
+        {
+            _signedOut = true;
+            SessionEnd.Close(this);
         }
 
         /// <summary>Information dialogs; replaced in tests so no window opens.</summary>

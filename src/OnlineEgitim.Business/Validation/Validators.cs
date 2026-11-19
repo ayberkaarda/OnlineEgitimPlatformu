@@ -201,6 +201,52 @@ internal sealed class CourseInputValidator : AbstractValidator<CourseInput>
     }
 }
 
+/// <summary>A teacher account, in this order: both fields present, a person's name, a specialty of at most 100 characters.</summary>
+internal sealed class TeacherAccountInputValidator : AbstractValidator<TeacherAccountInput>
+{
+    public TeacherAccountInputValidator()
+    {
+        ClassLevelCascadeMode = CascadeMode.Stop;
+
+        RuleFor(t => t)
+            .Must(t => t.FullName is not null && t.Specialty is not null).WithMessage(ValidationMessages.InputRequired);
+        RuleFor(t => t.FullName)
+            .Must(InputRules.IsValidPersonName).WithMessage(ValidationMessages.NameInvalid);
+        RuleFor(t => t.Specialty)
+            .Must(s => InputRules.IsValidText(s, InputRules.SpecialtyMaxLength)).WithMessage(ValidationMessages.SpecialtyInvalid);
+    }
+}
+
+/// <summary>A student account, in this order: both fields present, a person's name, an e-mail address.</summary>
+internal sealed class StudentAccountInputValidator : AbstractValidator<StudentAccountInput>
+{
+    public StudentAccountInputValidator()
+    {
+        ClassLevelCascadeMode = CascadeMode.Stop;
+
+        RuleFor(s => s)
+            .Must(s => s.FullName is not null && s.Email is not null).WithMessage(ValidationMessages.InputRequired);
+        RuleFor(s => s.FullName)
+            .Must(InputRules.IsValidPersonName).WithMessage(ValidationMessages.NameInvalid);
+        RuleFor(s => s.Email)
+            .Must(InputRules.IsValidEmail).WithMessage(ValidationMessages.EmailInvalid);
+    }
+}
+
+/// <summary>An account search: a text no longer than a name or address, a known role or none, a page from 0 to 1,000,000 of 1 to 50 accounts.</summary>
+internal sealed class AccountSearchValidator : AbstractValidator<Services.AccountSearch>
+{
+    public AccountSearchValidator()
+    {
+        RuleFor(s => s)
+            .Must(s => (InputRules.Clean(s.Text) is not { } text || text.Length <= InputRules.EmailMaxLength)
+                && (s.Role is null || Enum.IsDefined(s.Role.Value))
+                && s.PageIndex is >= 0 and <= CourseSearchValidator.MaxPageIndex
+                && s.PageSize is >= 1 and <= Services.AccountSearch.MaxPageSize)
+            .WithMessage(ValidationMessages.SearchInvalid);
+    }
+}
+
 /// <summary>
 /// A catalogue search: texts no longer than the columns they are compared with, a page from 0 to
 /// 1,000,000 of 1 to 50 courses and a known enrollment filter.

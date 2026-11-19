@@ -33,7 +33,8 @@ internal sealed class EnrollmentService(
     IEnrollmentRepository enrollments,
     ICourseRepository courses,
     TimeProvider timeProvider,
-    IAuditLog audit) : IEnrollmentService
+    IAuditLog audit,
+    ISessionGuard sessions) : IEnrollmentService
 {
     internal const string CourseRequired = "Lütfen bir ders seçiniz.";
     internal const string AlreadyEnrolled = "Bu dersi zaten seçtiniz.";
@@ -44,6 +45,7 @@ internal sealed class EnrollmentService(
     public async Task EnrollAsync(UserSession session, int courseId, CancellationToken cancellationToken = default)
     {
         Access.RequireRole(session, AccountRole.Student, audit);
+        await sessions.EnsureCurrentAsync(session, cancellationToken).ConfigureAwait(false);
 
         if (courseId <= 0)
         {
@@ -73,6 +75,7 @@ internal sealed class EnrollmentService(
     public async Task LeaveAsync(UserSession session, int courseId, CancellationToken cancellationToken = default)
     {
         Access.RequireRole(session, AccountRole.Student, audit);
+        await sessions.EnsureCurrentAsync(session, cancellationToken).ConfigureAwait(false);
 
         if (courseId <= 0)
         {
@@ -88,15 +91,17 @@ internal sealed class EnrollmentService(
         audit.Record(AuditEvent.EnrollmentLeft, AccountRole.Student);
     }
 
-    public Task<IReadOnlyList<CourseSummary>> GetMyCoursesAsync(UserSession session, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<CourseSummary>> GetMyCoursesAsync(UserSession session, CancellationToken cancellationToken = default)
     {
         Access.RequireRole(session, AccountRole.Student, audit);
-        return enrollments.GetCoursesOfStudentAsync(session.UserId, cancellationToken);
+        await sessions.EnsureCurrentAsync(session, cancellationToken).ConfigureAwait(false);
+        return await enrollments.GetCoursesOfStudentAsync(session.UserId, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<string>> GetStudentsAsync(UserSession session, int courseId, CancellationToken cancellationToken = default)
     {
         Access.RequireRole(session, AccountRole.Teacher, audit);
+        await sessions.EnsureCurrentAsync(session, cancellationToken).ConfigureAwait(false);
 
         var course = courseId > 0
             ? await courses.GetByIdAsync(courseId, cancellationToken).ConfigureAwait(false)

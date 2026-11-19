@@ -103,6 +103,7 @@ internal sealed class CourseService(
     IAccountRepository accounts,
     TimeProvider timeProvider,
     IAuditLog audit,
+    ISessionGuard sessions,
     IValidator<CourseInput> courseValidator,
     IValidator<NoteInput> noteValidator,
     IValidator<CourseSearch> searchValidator) : ICourseService
@@ -114,15 +115,17 @@ internal sealed class CourseService(
         CultureInfo.InvariantCulture,
         $"Kontenjan, kayıtlı öğrenci sayısının ({students}) altına düşürülemez.");
 
-    public Task<IReadOnlyList<CourseSummary>> GetCatalogAsync(UserSession session, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<CourseSummary>> GetCatalogAsync(UserSession session, CancellationToken cancellationToken = default)
     {
         Access.RequireRole(session, AccountRole.Student, audit);
-        return courses.GetAllAsync(cancellationToken);
+        await sessions.EnsureCurrentAsync(session, cancellationToken).ConfigureAwait(false);
+        return await courses.GetAllAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<CatalogResult> SearchCatalogAsync(UserSession session, CourseSearch search, CancellationToken cancellationToken = default)
     {
         Access.RequireRole(session, AccountRole.Student, audit);
+        await sessions.EnsureCurrentAsync(session, cancellationToken).ConfigureAwait(false);
         ArgumentNullException.ThrowIfNull(search);
         searchValidator.ValidateOrThrow(search);
 
@@ -153,22 +156,25 @@ internal sealed class CourseService(
             pageIndex * search.PageSize,
             search.PageSize);
 
-    public Task<IReadOnlyList<CourseSummary>> GetTeachingAsync(UserSession session, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<CourseSummary>> GetTeachingAsync(UserSession session, CancellationToken cancellationToken = default)
     {
         Access.RequireRole(session, AccountRole.Teacher, audit);
-        return courses.GetByTeacherAsync(session.UserId, cancellationToken);
+        await sessions.EnsureCurrentAsync(session, cancellationToken).ConfigureAwait(false);
+        return await courses.GetByTeacherAsync(session.UserId, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<TeacherProfile> GetMyProfileAsync(UserSession session, CancellationToken cancellationToken = default)
     {
         Access.RequireRole(session, AccountRole.Teacher, audit);
+        await sessions.EnsureCurrentAsync(session, cancellationToken).ConfigureAwait(false);
         return await accounts.GetTeacherAsync(session.UserId, cancellationToken).ConfigureAwait(false)
             ?? throw new AccessDeniedException();
     }
 
     public async Task<CourseDetails> GetDetailsAsync(UserSession session, int courseId, CancellationToken cancellationToken = default)
     {
-        Access.RequireSignedIn(session);
+        Access.RequireStudentOrTeacher(session, audit);
+        await sessions.EnsureCurrentAsync(session, cancellationToken).ConfigureAwait(false);
 
         var course = courseId > 0
             ? await courses.GetByIdAsync(courseId, cancellationToken).ConfigureAwait(false)
@@ -198,6 +204,7 @@ internal sealed class CourseService(
     public async Task<int> CreateAsync(UserSession session, string? name, string? topic, int? capacity, CancellationToken cancellationToken = default)
     {
         Access.RequireRole(session, AccountRole.Teacher, audit);
+        await sessions.EnsureCurrentAsync(session, cancellationToken).ConfigureAwait(false);
 
         var input = CourseInput.Create(name, topic, capacity);
         courseValidator.ValidateOrThrow(input);
@@ -212,6 +219,7 @@ internal sealed class CourseService(
     public async Task UpdateAsync(UserSession session, int courseId, string? name, string? topic, int? capacity, CancellationToken cancellationToken = default)
     {
         Access.RequireRole(session, AccountRole.Teacher, audit);
+        await sessions.EnsureCurrentAsync(session, cancellationToken).ConfigureAwait(false);
 
         var input = CourseInput.Create(name, topic, capacity);
         courseValidator.ValidateOrThrow(input);
@@ -236,6 +244,7 @@ internal sealed class CourseService(
     public async Task DeleteAsync(UserSession session, int courseId, int confirmedStudents, CancellationToken cancellationToken = default)
     {
         Access.RequireRole(session, AccountRole.Teacher, audit);
+        await sessions.EnsureCurrentAsync(session, cancellationToken).ConfigureAwait(false);
 
         var result = courseId > 0 && confirmedStudents >= 0
             ? await courses.DeleteAsync(courseId, session.UserId, confirmedStudents, timeProvider.GetUtcNow().UtcDateTime, cancellationToken).ConfigureAwait(false)
@@ -255,6 +264,7 @@ internal sealed class CourseService(
     public async Task AddNoteAsync(UserSession session, int courseId, string? content, CancellationToken cancellationToken = default)
     {
         Access.RequireRole(session, AccountRole.Teacher, audit);
+        await sessions.EnsureCurrentAsync(session, cancellationToken).ConfigureAwait(false);
 
         var input = NoteInput.Create(courseId, content);
         noteValidator.ValidateOrThrow(input);

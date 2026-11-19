@@ -182,7 +182,7 @@ public sealed class LegacyUpgradeTests
 
         // Once no teacher has a password, the database owner's key sets the first password, once.
         await database.ExecuteAsync("UPDATE dbo.Egitmenler SET Sifre = N'', SifreBicimi = 2 WHERE EgitmenID = 3", ct);
-        Assert.Equal(SetupStage.TeacherPasswordNeedsKey, await provider.GetRequiredService<ISetupService>().GetStageAsync(ct));
+        Assert.Equal(SetupStage.StaffPasswordNeedsKey, await provider.GetRequiredService<ISetupService>().GetStageAsync(ct));
         var key = await database.IssueSetupKeyAsync(ct);
         Assert.Matches("^[0-9A-F]{4}(-[0-9A-F]{4}){7}$", key);
         Assert.Equal(0, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.KurulumAnahtarlari WHERE CONVERT(nvarchar(200), AnahtarOzeti, 2) LIKE N'%' + @key + N'%'", ct, ("@key", key.Replace("-", string.Empty, StringComparison.Ordinal))));
@@ -447,7 +447,7 @@ public sealed class LegacyUpgradeTests
             "PK_Ogrenci", "PK_Egitmenler", "PK_Dersler", "PK_Notlar", "PK_OgrenciKurslar",
             "FK_Dersler_Egitmenler", "FK_Notlar_Dersler", "FK_OgrenciKurslar_Ogrenci", "FK_OgrenciKurslar_Dersler",
             "CK_Ogrenci_BasarisizGiris", "CK_Ogrenci_SifreBicimi", "CK_Egitmenler_BasarisizGiris", "CK_Egitmenler_SifreBicimi",
-            "PK_KurulumAnahtarlari", "CK_Dersler_Kontenjan",
+            "PK_KurulumAnahtarlari", "CK_Dersler_Kontenjan", "CK_Egitmenler_Rol",
         ];
         foreach (var name in expected)
         {
@@ -458,7 +458,11 @@ public sealed class LegacyUpgradeTests
         Assert.Equal(expected.Length, await database.ScalarAsync(
             "SELECT COUNT(*) FROM sys.objects WHERE type IN ('PK', 'F', 'C') AND parent_object_id <> OBJECT_ID(N'dbo.__EFMigrationsHistory')",
             ct));
-        Assert.Equal(0, await database.ScalarAsync("SELECT COUNT(*) FROM sys.default_constraints", ct));
+        // The only defaults are those that filled the later columns of the existing rows.
+        Assert.Equal(0, await database.ScalarAsync(
+            "SELECT COUNT(*) FROM sys.default_constraints d JOIN sys.columns c ON c.object_id = d.parent_object_id AND c.column_id = d.parent_column_id WHERE c.name NOT IN (N'Rol', N'Pasif', N'OturumSurumu')",
+            ct));
+        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM sys.triggers WHERE name = N'TR_Egitmenler_Rol'", ct));
         Assert.Equal(3, await database.ScalarAsync(
             "SELECT COUNT(*) FROM sys.indexes WHERE is_unique = 1 AND has_filter = 0 AND name IN (N'IX_Ogrenci_Isim', N'IX_Ogrenci_Email', N'IX_Egitmenler_AdSoyad')",
             ct));

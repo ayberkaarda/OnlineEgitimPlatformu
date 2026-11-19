@@ -22,6 +22,20 @@ internal static class Access
     public static void RequireSignedIn(UserSession? session) => ArgumentNullException.ThrowIfNull(session);
 
     /// <summary>
+    /// Course views are for students and teachers. An administrator's id belongs to the staff table and
+    /// must never be compared with student ids, so administrators are refused outright.
+    /// </summary>
+    public static void RequireStudentOrTeacher(UserSession? session, IAuditLog audit)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        if (session.Role is not (AccountRole.Student or AccountRole.Teacher))
+        {
+            audit.Record(AuditEvent.AccessDenied, session.Role);
+            throw new AccessDeniedException();
+        }
+    }
+
+    /// <summary>
     /// Refuses a course that is missing or belongs to someone else with the same exception, message
     /// and audit event, so ids cannot be probed.
     /// </summary>

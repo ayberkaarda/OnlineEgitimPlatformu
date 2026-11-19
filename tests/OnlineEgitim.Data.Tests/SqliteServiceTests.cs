@@ -456,8 +456,11 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         Assert.False(await setup.IsSetupRequiredAsync(Ct));
         Assert.Equal(SetupStage.Completed, await setup.GetStageAsync(Ct));
         var error = await Assert.ThrowsAsync<BusinessRuleException>(
-            () => setup.CreateFirstTeacherAsync(key, "Yeni Öğretmen", "Kimya", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
-        Assert.Equal(SetupService.AlreadyDone, error.Message);
+            () => setup.CreateFirstAdminAsync(key, "Yeni Öğretmen", "Kimya", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
+        Assert.Equal(SetupService.SetupKeyNotAllowed, error.Message); // such a database gets its administrator from docs/promote-admin.sql
+        var withoutKey = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => setup.CreateFirstAdminAsync(null, "Yeni Öğretmen", "Kimya", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
+        Assert.Equal(SetupService.AlreadyDone, withoutKey.Message);
         await using var context = _db.CreateContext();
         Assert.Equal(0, await ConsumedSetupKeysAsync(context, Ct)); // an existing teacher keeps the key unused
         Assert.Equal(2, await context.Teachers.CountAsync(Ct));

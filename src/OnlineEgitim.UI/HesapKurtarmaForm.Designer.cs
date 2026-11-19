@@ -52,7 +52,7 @@ namespace OnlineEgitim.UI
             this.lblBaslik.Name = "lblBaslik";
             this.lblBaslik.Size = new System.Drawing.Size(222, 20);
             this.lblBaslik.TabIndex = 0;
-            this.lblBaslik.Text = "Şifresiz Hesap Kurtarma";
+            this.lblBaslik.Text = "Kodla Şifre Belirleme";
             //
             // lblAciklama
             //
@@ -70,7 +70,7 @@ namespace OnlineEgitim.UI
             this.rbOgrenci.Size = new System.Drawing.Size(300, 20);
             this.rbOgrenci.TabIndex = 2;
             this.rbOgrenci.TabStop = true;
-            this.rbOgrenci.Text = "Öğrenci (öğretmenin verdiği kurtarma kodu)";
+            this.rbOgrenci.Text = "Öğrenci (kurtarma kodu)";
             this.rbOgrenci.UseVisualStyleBackColor = true;
             this.rbOgrenci.CheckedChanged += new System.EventHandler(this.rbRol_CheckedChanged);
             //
@@ -79,9 +79,9 @@ namespace OnlineEgitim.UI
             this.rbOgretmen.AutoSize = true;
             this.rbOgretmen.Location = new System.Drawing.Point(16, 152);
             this.rbOgretmen.Name = "rbOgretmen";
-            this.rbOgretmen.Size = new System.Drawing.Size(212, 20);
+            this.rbOgretmen.Size = new System.Drawing.Size(340, 20);
             this.rbOgretmen.TabIndex = 3;
-            this.rbOgretmen.Text = "Öğretmen (kurulum anahtarı)";
+            this.rbOgretmen.Text = "Öğretmen / Yönetici (kod veya kurulum anahtarı)";
             this.rbOgretmen.UseVisualStyleBackColor = true;
             this.rbOgretmen.CheckedChanged += new System.EventHandler(this.rbRol_CheckedChanged);
             //
@@ -196,7 +196,7 @@ namespace OnlineEgitim.UI
             this.MinimizeBox = false;
             this.Name = "HesapKurtarmaForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
-            this.Text = "Hesap Kurtarma";
+            this.Text = "Kodla Şifre Belirleme";
             this.ResumeLayout(false);
             this.PerformLayout();
 

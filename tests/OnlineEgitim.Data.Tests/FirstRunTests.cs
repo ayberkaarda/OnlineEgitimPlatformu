@@ -35,7 +35,7 @@ public sealed class FirstRunTests
     }
 
     [Fact]
-    public async Task Setup_EmptyDatabase_CreatesTheFirstTeacherWithoutAKeyOnce()
+    public async Task Setup_EmptyDatabase_CreatesTheFirstAdminWithoutAKeyOnce()
     {
         await using var db = new SqliteDatabase(seed: false);
         await db.InitializeAsync();
@@ -43,19 +43,19 @@ public sealed class FirstRunTests
         Assert.Equal(SetupStage.EmptyDatabase, await setup.GetStageAsync(Ct));
 
         var mismatch = await Assert.ThrowsAsync<BusinessRuleException>(
-            () => setup.CreateFirstTeacherAsync(null, "Ada Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre2", Ct));
+            () => setup.CreateFirstAdminAsync(null, "Ada Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre2", Ct));
         var weak = await Assert.ThrowsAsync<BusinessRuleException>(
-            () => setup.CreateFirstTeacherAsync(null, "Ada Kurucu", "Matematik", "kisa", "kisa", Ct));
-        var session = await setup.CreateFirstTeacherAsync(null, " Ada Kurucu ", " Matematik ", "Gizli.Sifre1", "Gizli.Sifre1", Ct);
+            () => setup.CreateFirstAdminAsync(null, "Ada Kurucu", "Matematik", "kisa", "kisa", Ct));
+        var session = await setup.CreateFirstAdminAsync(null, " Ada Kurucu ", " Matematik ", "Gizli.Sifre1", "Gizli.Sifre1", Ct);
 
         Assert.Equal(ValidationMessages.PasswordsDoNotMatch, mismatch.Message);
         Assert.Equal(ValidationMessages.PasswordInvalid, weak.Message);
-        Assert.True(session.IsTeacher);
+        Assert.True(session.IsAdmin);
         Assert.False(await setup.IsSetupRequiredAsync(Ct));
         Assert.Equal(SetupStage.Completed, await setup.GetStageAsync(Ct));
         Assert.Equal(session.UserId, (await db.Get<IAuthService>().SignInTeacherAsync("Ada Kurucu", "Gizli.Sifre1", Ct)).UserId);
         var second = await Assert.ThrowsAsync<BusinessRuleException>(
-            () => setup.CreateFirstTeacherAsync(null, "İkinci Kişi", "Fizik", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
+            () => setup.CreateFirstAdminAsync(null, "İkinci Kişi", "Fizik", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
         Assert.Equal(SetupService.AlreadyDone, second.Message);
     }
 
@@ -72,21 +72,21 @@ public sealed class FirstRunTests
         await AddStudentAsync(db, "Mevcut Öğrenci");
         var setup = db.Get<ISetupService>();
         Assert.False(await setup.IsSetupRequiredAsync(Ct));
-        Assert.Equal(SetupStage.FirstTeacherNeedsKey, await setup.GetStageAsync(Ct));
+        Assert.Equal(SetupStage.FirstAdminNeedsKey, await setup.GetStageAsync(Ct));
 
         // No key exists yet: nothing works, not even a key of the right form.
         var none = await Assert.ThrowsAsync<BusinessRuleException>(
-            () => setup.CreateFirstTeacherAsync(null, "Yetkisiz Kişi", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
+            () => setup.CreateFirstAdminAsync(null, "Yetkisiz Kişi", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
         Assert.Equal(SetupService.SetupKeyRequired, none.Message);
         var invented = await Assert.ThrowsAsync<BusinessRuleException>(
-            () => setup.CreateFirstTeacherAsync(Convert.ToHexString(new byte[16]), "Yetkisiz Kişi", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
+            () => setup.CreateFirstAdminAsync(Convert.ToHexString(new byte[16]), "Yetkisiz Kişi", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
         Assert.Equal(SetupService.SetupKeyInvalid, invented.Message);
 
         var key = await AddKeyAsync(db);
         foreach (var wrong in new[] { "YANLIS-ANAHTAR-0000", key + "0", key[..^1], new string('-', 32), key[..^1] + "G" })
         {
             var error = await Assert.ThrowsAsync<BusinessRuleException>(
-                () => setup.CreateFirstTeacherAsync(wrong, "Yetkisiz Kişi", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
+                () => setup.CreateFirstAdminAsync(wrong, "Yetkisiz Kişi", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
             Assert.Equal(SetupService.SetupKeyInvalid, error.Message);
         }
 
@@ -97,9 +97,9 @@ public sealed class FirstRunTests
         }
 
         // The founder, with the key; typed in lower case and with other separators.
-        var founder = await setup.CreateFirstTeacherAsync(
+        var founder = await setup.CreateFirstAdminAsync(
             " " + string.Join(' ', key.ToLowerInvariant().Chunk(8).Select(c => new string(c))) + " ", "Ada Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct);
-        Assert.True(founder.IsTeacher);
+        Assert.True(founder.IsAdmin);
         Assert.Equal(SetupStage.Completed, await setup.GetStageAsync(Ct));
         await using (var context = db.CreateContext())
         {
@@ -125,7 +125,7 @@ public sealed class FirstRunTests
         for (var i = 0; i < 25; i++)
         {
             await Assert.ThrowsAsync<BusinessRuleException>(
-                () => setup.CreateFirstTeacherAsync(Convert.ToHexString(BitConverter.GetBytes((long)i)) + "0000000000000000", "Yetkisiz Kişi", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
+                () => setup.CreateFirstAdminAsync(Convert.ToHexString(BitConverter.GetBytes((long)i)) + "0000000000000000", "Yetkisiz Kişi", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
         }
 
         await using (var context = db.CreateContext())
@@ -134,7 +134,7 @@ public sealed class FirstRunTests
             Assert.False(stored.Consumed);
         }
 
-        Assert.True((await setup.CreateFirstTeacherAsync(key, "Ada Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct)).IsTeacher);
+        Assert.True((await setup.CreateFirstAdminAsync(key, "Ada Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct)).IsAdmin);
     }
 
     [Fact]
@@ -147,7 +147,7 @@ public sealed class FirstRunTests
         db.Clock.Advance(TimeSpan.FromHours(24));
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(
-            () => db.Get<ISetupService>().CreateFirstTeacherAsync(key, "Ada Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
+            () => db.Get<ISetupService>().CreateFirstAdminAsync(key, "Ada Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
 
         Assert.Equal(SetupService.SetupKeyInvalid, error.Message);
         await using var context = db.CreateContext();
@@ -171,10 +171,10 @@ public sealed class FirstRunTests
 
         insertFailure.Arm();
         await Assert.ThrowsAnyAsync<Exception>(
-            () => setup.CreateFirstTeacherAsync(key, "Ada Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
+            () => setup.CreateFirstAdminAsync(key, "Ada Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
         commitFailure.Arm();
         await Assert.ThrowsAsync<InjectedFailureException>(
-            () => setup.CreateFirstTeacherAsync(key, "Ada Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
+            () => setup.CreateFirstAdminAsync(key, "Ada Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
 
         Assert.True(insertFailure.Fired);
         Assert.True(commitFailure.Fired);
@@ -184,14 +184,14 @@ public sealed class FirstRunTests
             Assert.Equal(0, await TestServices.ConsumedSetupKeysAsync(context, Ct));
         }
 
-        Assert.True((await setup.CreateFirstTeacherAsync(key, "Ada Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct)).IsTeacher);
+        Assert.True((await setup.CreateFirstAdminAsync(key, "Ada Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct)).IsAdmin);
         await using (var context = db.CreateContext())
         {
             Assert.Equal(1, await TestServices.ConsumedSetupKeysAsync(context, Ct));
         }
 
         await Assert.ThrowsAsync<BusinessRuleException>(
-            () => setup.CreateFirstTeacherAsync(key, "İkinci Kişi", "Fizik", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
+            () => setup.CreateFirstAdminAsync(key, "İkinci Kişi", "Fizik", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
     }
 
     /// <summary>
@@ -215,7 +215,7 @@ public sealed class FirstRunTests
 
         var key = await AddKeyAsync(db);
         var recovery = db.Get<IRecoveryService>();
-        Assert.Equal(SetupStage.TeacherPasswordNeedsKey, await db.Get<ISetupService>().GetStageAsync(Ct));
+        Assert.Equal(SetupStage.StaffPasswordNeedsKey, await db.Get<ISetupService>().GetStageAsync(Ct));
 
         updateFailure.Arm();
         await Assert.ThrowsAsync<InjectedFailureException>(
@@ -319,6 +319,42 @@ public sealed class FirstRunTests
         Assert.True(unenrolled.IsStudent);
         await using (var context = db.CreateContext())
         {
+            Assert.Equal(1, await TestServices.ConsumedSetupKeysAsync(context, Ct));
+        }
+    }
+
+    /// <summary>
+    /// Teachers exist but none signs in with a password and there is no administrator: the setup key
+    /// creates the first administrator, once. As soon as a teacher signs in with a password no key is
+    /// accepted any more, and a second administrator is never created by the setup.
+    /// </summary>
+    [Fact]
+    public async Task Setup_PasswordlessTeachersOnly_TheKeyCreatesTheFirstAdmin()
+    {
+        await using var db = new SqliteDatabase(seed: false);
+        await db.InitializeAsync();
+        await using (var context = db.CreateContext())
+        {
+            context.Teachers.Add(new Domain.Entities.Teacher { FullName = "Şifresiz Öğretmen", Specialty = "Fizik", PasswordFormat = Domain.Entities.PasswordFormat.None });
+            await context.SaveChangesAsync(Ct);
+        }
+
+        var setup = db.Get<ISetupService>();
+        Assert.Equal(SetupStage.StaffPasswordNeedsKey, await setup.GetStageAsync(Ct));
+        var key = await AddKeyAsync(db);
+        var none = await Assert.ThrowsAsync<BusinessRuleException>(() => setup.CreateFirstAdminAsync(null, "Ada Kurucu", "Yönetim", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
+        Assert.Equal(SetupService.SetupKeyRequired, none.Message);
+
+        var admin = await setup.CreateFirstAdminAsync(key, "Ada Kurucu", "Yönetim", "Gizli.Sifre1", "Gizli.Sifre1", Ct);
+
+        Assert.True(admin.IsAdmin);
+        Assert.Equal(SetupStage.Completed, await setup.GetStageAsync(Ct));
+        var fresh = await AddKeyAsync(db);
+        var refused = await Assert.ThrowsAsync<BusinessRuleException>(() => setup.CreateFirstAdminAsync(fresh, "İkinci Kurucu", "Yönetim", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
+        Assert.Equal(SetupService.AlreadyDone, refused.Message);
+        await using (var context = db.CreateContext())
+        {
+            Assert.Equal(1, await context.Teachers.CountAsync(t => t.Role == Domain.Entities.AccountRole.Admin, Ct));
             Assert.Equal(1, await TestServices.ConsumedSetupKeysAsync(context, Ct));
         }
     }

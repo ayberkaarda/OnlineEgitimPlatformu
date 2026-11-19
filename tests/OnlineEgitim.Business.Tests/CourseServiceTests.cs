@@ -21,7 +21,7 @@ public sealed class CourseServiceTests
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private CourseService Service => new(_courses.Object, _enrollments.Object, _accounts.Object, _clock, _audit, Validators.Course, Validators.Note, Validators.CourseSearch);
+    private CourseService Service => new(_courses.Object, _enrollments.Object, _accounts.Object, _clock, _audit, CurrentSessions.Instance, Validators.Course, Validators.Note, Validators.CourseSearch);
 
     [Fact]
     public async Task Details_ForeignAndMissingCourse_SameAnswerSameAuditAndNoDataRead()

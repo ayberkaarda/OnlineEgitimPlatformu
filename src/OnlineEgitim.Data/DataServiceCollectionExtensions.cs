@@ -42,6 +42,7 @@ public static class DataServiceCollectionExtensions
         services.AddSingleton<IAccountRepository, AccountRepository>();
         services.AddSingleton<ICourseRepository, CourseRepository>();
         services.AddSingleton<IEnrollmentRepository, EnrollmentRepository>();
+        services.AddSingleton<IAccountAdministrationRepository, AccountAdministrationRepository>();
         return services;
     }
 }

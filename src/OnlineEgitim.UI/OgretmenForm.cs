@@ -9,7 +9,7 @@ namespace OnlineEgitim.UI
     /// Teacher panel: the teacher's own courses, the students of the selected course, adding notes,
     /// creating, editing and deleting courses.
     /// </summary>
-    public partial class OgretmenForm : Form
+    public partial class OgretmenForm : Form, ISessionPanel
     {
         private readonly ICourseService _courses;
         private readonly IEnrollmentService _enrollments;
@@ -19,6 +19,7 @@ namespace OnlineEgitim.UI
         private readonly ExclusiveOperation _deleteCourse = new();
         private readonly RequestSequence _studentRequests = new();
         private bool _binding;
+        private bool _signedOut;
 
         public OgretmenForm(ICourseService courses, IEnrollmentService enrollments, IFormFactory forms, UserSession session)
         {
@@ -40,6 +41,17 @@ namespace OnlineEgitim.UI
             pictureBox1.SizeMode = PictureBoxSizeMode.Zoom;
             txtNotEkle.MaxLength = InputRules.NoteMaxLength;
             Load += async (_, _) => await LoadAsync();
+        }
+
+        bool ISessionPanel.SignedOut => _signedOut;
+
+        /// <summary>Whether the session ended and the sign-in has to be shown again.</summary>
+        internal bool SignedOut => _signedOut;
+
+        void ISessionPanel.EndSession()
+        {
+            _signedOut = true;
+            SessionEnd.Close(this);
         }
 
         /// <summary>Information dialogs; replaced in tests so no window opens.</summary>

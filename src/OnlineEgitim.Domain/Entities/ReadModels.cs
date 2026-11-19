@@ -1,22 +1,45 @@
 namespace OnlineEgitim.Domain.Entities;
 
-/// <summary>What a sign-in needs to know about an account.</summary>
+/// <summary>
+/// What a sign-in needs to know about an account. <see cref="Role"/> is the account's own role: a row
+/// of the staff table is a teacher or an administrator.
+/// </summary>
 public sealed record AccountCredentials(
     int Id,
     string FullName,
     string PasswordHash,
     PasswordFormat PasswordFormat,
     int FailedLoginCount,
-    DateTime? LockoutEnd);
+    DateTime? LockoutEnd,
+    AccountRole Role = AccountRole.Student,
+    bool Disabled = false,
+    int SessionVersion = 0);
 
-/// <summary>What the recovery of a student account without a password needs to know.</summary>
-public sealed record StudentRecoveryState(
+/// <summary>What setting a password with a single use code needs to know about an account.</summary>
+public sealed record AccountRecoveryState(
     int Id,
     string FullName,
     PasswordFormat PasswordFormat,
     string? RecoveryCodeHash,
     DateTime? RecoveryCodeExpires,
-    DateTime? LockoutEnd);
+    DateTime? LockoutEnd,
+    AccountRole Role = AccountRole.Student,
+    bool Disabled = false);
+
+/// <summary>What decides whether a session of an account is still valid.</summary>
+public sealed record SessionState(AccountRole Role, bool Disabled, int SessionVersion);
+
+/// <summary>
+/// An account as the administrators' list shows it: never a password, a hash or a code.
+/// <see cref="Detail"/> is a student's e-mail address or a teacher's specialty.
+/// </summary>
+public sealed record AccountListing(AccountRole Role, int Id, string FullName, string Detail, bool Disabled, bool HasPassword);
+
+/// <summary>An administrator's search: <see cref="Text"/> matches names and details, <see cref="Role"/> limits the kind.</summary>
+public sealed record AccountSearchCriteria(string? Text, AccountRole? Role, int Skip, int Take);
+
+/// <summary>One page of an account search and the number of all matching accounts.</summary>
+public sealed record AccountPage(IReadOnlyList<AccountListing> Items, int TotalCount);
 
 /// <summary>A usable setup key as a given key is compared with it.</summary>
 public sealed record StoredSetupKey(int Id, byte[] KeyHash);
@@ -71,5 +94,5 @@ public sealed record CatalogEntry(CourseSummary Course, bool Enrolled);
 /// <summary>One page of a catalogue search and the number of all matching courses.</summary>
 public sealed record CatalogPage(IReadOnlyList<CatalogEntry> Items, int TotalCount);
 
-/// <summary>The public profile of a teacher.</summary>
-public sealed record TeacherProfile(int Id, string FullName, string Specialty);
+/// <summary>The public profile of a teacher or an administrator.</summary>
+public sealed record TeacherProfile(int Id, string FullName, string Specialty, AccountRole Role = AccountRole.Teacher);

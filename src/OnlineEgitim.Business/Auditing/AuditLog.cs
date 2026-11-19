@@ -25,7 +25,10 @@ public enum AuditEvent
     /// <summary>A new student account was created.</summary>
     StudentRegistered = 4,
 
-    /// <summary>The first teacher account was created by the first-run setup.</summary>
+    /// <summary>
+    /// The first teacher account was created by the first-run setup. No longer recorded: the setup
+    /// creates the first administrator (<see cref="FirstAdminCreated"/>); kept so the value keeps its meaning.
+    /// </summary>
     FirstTeacherCreated = 5,
 
     /// <summary>A teacher created a course.</summary>
@@ -66,6 +69,24 @@ public enum AuditEvent
 
     /// <summary>A student left a course.</summary>
     EnrollmentLeft = 17,
+
+    /// <summary>An administrator created a teacher or student account (the role is the new account's).</summary>
+    AccountCreated = 18,
+
+    /// <summary>An administrator disabled an account (the role is the disabled account's).</summary>
+    AccountDisabled = 19,
+
+    /// <summary>An administrator enabled an account again (the role is the enabled account's).</summary>
+    AccountEnabled = 20,
+
+    /// <summary>An administrator made another administrator, or themselves, a teacher.</summary>
+    AdminDemoted = 21,
+
+    /// <summary>A session was refused: the account was disabled, its password reset or its role changed since.</summary>
+    SessionRejected = 22,
+
+    /// <summary>The first administrator account was created by the first-run setup.</summary>
+    FirstAdminCreated = 23,
 }
 
 /// <summary>Receives <see cref="AuditEvent"/>s.</summary>
@@ -96,6 +117,12 @@ public static class AuditCodes
         AuditEvent.CourseUpdated => "course.updated",
         AuditEvent.CourseDeleted => "course.deleted",
         AuditEvent.EnrollmentLeft => "course.left",
+        AuditEvent.AccountCreated => "admin.account.created",
+        AuditEvent.AccountDisabled => "admin.account.disabled",
+        AuditEvent.AccountEnabled => "admin.account.enabled",
+        AuditEvent.AdminDemoted => "admin.role.demoted",
+        AuditEvent.SessionRejected => "auth.session.rejected",
+        AuditEvent.FirstAdminCreated => "setup.admin.created",
         _ => throw new ArgumentOutOfRangeException(nameof(auditEvent), auditEvent, "Unknown audit event."),
     };
 
@@ -119,6 +146,7 @@ public static class AuditCodes
     {
         AccountRole.Student => "student",
         AccountRole.Teacher => "teacher",
+        AccountRole.Admin => "admin",
         null => "none",
         _ => "unknown",
     };

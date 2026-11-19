@@ -8,17 +8,19 @@ using OnlineEgitim.Domain.Repositories;
 
 namespace OnlineEgitim.Business.Services;
 
-/// <summary>A recovery code as it is handed to the student once; only its hash is stored.</summary>
+/// <summary>A recovery code as it is handed over once; only its hash is stored.</summary>
 public sealed record RecoveryCode(string Code, DateTime ExpiresUtc);
 
 /// <summary>
-/// Verified recovery of accounts that have no password (<see cref="PasswordFormat.None"/>, kept from the
-/// original application). An empty or any other password never signs them in; instead a teacher issues
-/// a single use, expiring code for a student of their own courses. While no teacher can sign in with a
-/// password, the founder's setup key sets the first password of a teacher, or of a student who is
-/// enrolled in no course (such a student has no teacher who could issue a code). An enrolled student is
-/// never recovered with the key: the course's teacher issues the code. The account keeps its id and
-/// with it its courses and enrollments.
+/// Verified recovery of accounts that have no password (<see cref="PasswordFormat.None"/>: kept from the
+/// original application, or created by an administrator with a code instead of a password). An empty
+/// or any other password never signs them in; instead an authorized person issues a single use,
+/// expiring code: a teacher for a student of their own courses, an administrator when creating the
+/// account. While no teacher or administrator can sign in with a password, the founder's setup key
+/// sets the first password of a staff account, or of a student who is enrolled in no course (such a
+/// student has no teacher who could issue a code). An enrolled student is never recovered with the
+/// key: the course's teacher issues the code. The account keeps its id and with it its courses and
+/// enrollments.
 /// </summary>
 public interface IRecoveryService
 {
@@ -31,16 +33,17 @@ public interface IRecoveryService
     Task<RecoveryCode> IssueStudentCodeAsync(UserSession teacher, string? studentName, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Sets the first password of a student and signs the student in, with the code a teacher issued
-    /// or, while no teacher can sign in with a password, with the setup key (told apart by their form).
-    /// The setup key works only for a student enrolled in no course; for an enrolled student it is
-    /// refused like a wrong key and stays unused.
+    /// Sets the first password of a student and signs the student in, with the code a teacher or an
+    /// administrator issued or, while no teacher can sign in with a password, with the setup key (told
+    /// apart by their form). The setup key works only for a student enrolled in no course; for an
+    /// enrolled student it is refused like a wrong key and stays unused.
     /// </summary>
     Task<UserSession> RecoverStudentAsync(string? fullName, string? code, string? password, string? passwordRepeat, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Sets the first password of a teacher without one with the setup key and signs the teacher in.
-    /// Refused while any teacher can sign in with a password.
+    /// Sets the first password of a teacher or an administrator and signs the account in, with the code
+    /// an administrator issued or with the setup key (told apart by their form). The setup key is refused
+    /// while any teacher or administrator can sign in with a password.
     /// </summary>
     Task<UserSession> RecoverTeacherAsync(string? setupKey, string? fullName, string? password, string? passwordRepeat, CancellationToken cancellationToken = default);
 }
@@ -51,6 +54,7 @@ internal sealed class RecoveryService(
     SetupKeyGate setupKeys,
     TimeProvider timeProvider,
     IAuditLog audit,
+    ISessionGuard sessions,
     IValidator<StudentNameInput> studentNameValidator,
     IValidator<NewPasswordInput> newPasswordValidator) : IRecoveryService
 {
@@ -67,6 +71,7 @@ internal sealed class RecoveryService(
     public async Task<RecoveryCode> IssueStudentCodeAsync(UserSession teacher, string? studentName, CancellationToken cancellationToken = default)
     {
         Access.RequireRole(teacher, AccountRole.Teacher, audit);
+        await sessions.EnsureCurrentAsync(teacher, cancellationToken).ConfigureAwait(false);
         var input = StudentNameInput.Create(studentName);
         studentNameValidator.ValidateOrThrow(input);
         var name = input.FullName!;
@@ -104,20 +109,45 @@ internal sealed class RecoveryService(
             return await RecoverWithSetupKeyAsync(AccountRole.Student, code, name, password!, cancellationToken).ConfigureAwait(false);
         }
 
-        var given = CodeFormat.Normalize(code!);
+        return await RecoverWithCodeAsync(AccountRole.Student, name, code!, password!, cancellationToken).ConfigureAwait(false);
+    }
 
-        var student = await accounts.FindStudentRecoveryAsync(name, cancellationToken).ConfigureAwait(false);
+    public async Task<UserSession> RecoverTeacherAsync(
+        string? setupKey,
+        string? fullName,
+        string? password,
+        string? passwordRepeat,
+        CancellationToken cancellationToken = default)
+    {
+        var name = ValidateNewPassword(fullName, setupKey, password, passwordRepeat);
+        if (SetupKeyPolicy.TryNormalize(setupKey, out _))
+        {
+            return await RecoverWithSetupKeyAsync(AccountRole.Teacher, setupKey, name, password!, cancellationToken).ConfigureAwait(false);
+        }
+
+        return await RecoverWithCodeAsync(AccountRole.Teacher, name, setupKey!, password!, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// A password with a single use code, for the account of <paramref name="table"/>'s table. Every
+    /// refusal has one message and one audit event and costs one verification, whether the account
+    /// exists, has a usable code, is locked or disabled; wrong codes count towards the lockout.
+    /// </summary>
+    private async Task<UserSession> RecoverWithCodeAsync(AccountRole table, string name, string code, string password, CancellationToken cancellationToken)
+    {
+        var given = CodeFormat.Normalize(code);
+        var account = await accounts.FindRecoveryAsync(table, name, cancellationToken).ConfigureAwait(false);
         var now = timeProvider.GetUtcNow().UtcDateTime;
-        if (student is null || student.LockoutEnd > now)
+        if (account is null || account.LockoutEnd > now || account.Disabled)
         {
             passwordHasher.SimulateVerification(given);
-            throw Refused();
+            throw Refused(table);
         }
 
         // Exactly one verification on every path, real or simulated: an account without a usable code
         // (none, expired, or a password set meanwhile) costs what a wrong code costs.
-        var usableHash = student.PasswordFormat == PasswordFormat.None && student.RecoveryCodeExpires > now
-            ? student.RecoveryCodeHash
+        var usableHash = account.PasswordFormat == PasswordFormat.None && account.RecoveryCodeExpires > now
+            ? account.RecoveryCodeHash
             : null;
         bool verified;
         if (usableHash is null)
@@ -134,33 +164,23 @@ internal sealed class RecoveryService(
         {
             // Wrong codes count like wrong passwords, so a code cannot be guessed.
             await accounts.RecordFailedLoginAsync(
-                AccountRole.Student,
-                student.Id,
+                table,
+                account.Id,
                 LoginPolicy.MaxFailedAttempts,
                 now + LoginPolicy.LockoutDuration,
                 cancellationToken).ConfigureAwait(false);
-            throw Refused();
+            throw Refused(table);
         }
 
-        var completed = await accounts.CompleteStudentRecoveryAsync(student, now, passwordHasher.Hash(password!), cancellationToken).ConfigureAwait(false);
-        if (!completed)
+        var completed = await accounts.CompleteRecoveryAsync(table, account, now, passwordHasher.Hash(password), cancellationToken).ConfigureAwait(false);
+        var state = completed ? await accounts.GetSessionStateAsync(table, account.Id, cancellationToken).ConfigureAwait(false) : null;
+        if (state is null)
         {
-            throw Refused();
+            throw Refused(table);
         }
 
-        audit.Record(AuditEvent.AccountRecovered, AccountRole.Student);
-        return new UserSession(AccountRole.Student, student.Id, student.FullName);
-    }
-
-    public async Task<UserSession> RecoverTeacherAsync(
-        string? setupKey,
-        string? fullName,
-        string? password,
-        string? passwordRepeat,
-        CancellationToken cancellationToken = default)
-    {
-        var name = ValidateNewPassword(fullName, setupKey, password, passwordRepeat);
-        return await RecoverWithSetupKeyAsync(AccountRole.Teacher, setupKey, name, password!, cancellationToken).ConfigureAwait(false);
+        audit.Record(AuditEvent.AccountRecovered, state.Role);
+        return new UserSession(state.Role, account.Id, account.FullName, state.SessionVersion);
     }
 
     /// <summary>
@@ -174,11 +194,13 @@ internal sealed class RecoveryService(
         switch (result.Status)
         {
             case SetupKeyWriteStatus.Done:
-                audit.Record(AuditEvent.AccountRecovered, role);
+                var state = await accounts.GetSessionStateAsync(role, result.AccountId, cancellationToken).ConfigureAwait(false);
+                var sessionRole = state?.Role ?? role;
+                audit.Record(AuditEvent.AccountRecovered, sessionRole);
                 var displayName = role == AccountRole.Teacher
                     ? (await accounts.GetTeacherAsync(result.AccountId, cancellationToken).ConfigureAwait(false))?.FullName ?? name
-                    : (await accounts.FindStudentRecoveryAsync(name, cancellationToken).ConfigureAwait(false))?.FullName ?? name;
-                return new UserSession(role, result.AccountId, displayName);
+                    : (await accounts.FindRecoveryAsync(AccountRole.Student, name, cancellationToken).ConfigureAwait(false))?.FullName ?? name;
+                return new UserSession(sessionRole, result.AccountId, displayName, state?.SessionVersion ?? 0);
             case SetupKeyWriteStatus.SetupCompleted:
                 audit.Record(AuditEvent.RecoveryFailed, null);
                 throw new BusinessRuleException(SetupService.SetupKeyNotAllowed);
@@ -197,9 +219,9 @@ internal sealed class RecoveryService(
         return input.FullName!;
     }
 
-    private BusinessRuleException Refused()
+    private BusinessRuleException Refused(AccountRole table)
     {
-        audit.Record(AuditEvent.RecoveryFailed, AccountRole.Student);
+        audit.Record(AuditEvent.RecoveryFailed, table);
         return new BusinessRuleException(StudentRecoveryFailed);
     }
 }

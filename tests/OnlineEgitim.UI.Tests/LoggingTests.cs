@@ -198,7 +198,7 @@ public sealed partial class LoggingTests : IDisposable
 
         var teacher = await recovery.RecoverTeacherAsync(setupKey, TeacherName, TeacherPassword, TeacherPassword, Ct);
         await app.AttemptAsync(() => recovery.RecoverTeacherAsync(setupKey, TeacherName, TeacherPassword, TeacherPassword, Ct)); // key used, setup completed
-        await app.AttemptAsync(() => app.Get<ISetupService>().CreateFirstTeacherAsync(setupKey, "İkinci Kurucu", Specialty, TeacherPassword, TeacherPassword, Ct));
+        await app.AttemptAsync(() => app.Get<ISetupService>().CreateFirstAdminAsync(setupKey, "İkinci Kurucu", Specialty, TeacherPassword, TeacherPassword, Ct));
 
         await auth.RegisterStudentAsync(StudentName, Email, StudentPassword, Ct);
         await auth.RegisterStudentAsync(StudentName, Email, StudentPassword, Ct); // taken: same outcome, no account
