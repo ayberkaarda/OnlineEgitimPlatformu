@@ -118,7 +118,11 @@ public sealed class SetupKeyAttempt
         Now = now;
     }
 
-    /// <summary>UTC time of the attempt; decides expiry.</summary>
+    /// <summary>
+    /// UTC time the attempt was made; selects the keys that were usable then. On SQL Server the final
+    /// UPDATE that uses a key up checks its expiry again against the database's clock, because the
+    /// transaction may have waited for locks since this time was taken.
+    /// </summary>
     public DateTime Now { get; }
 
     public int? FindMatch(IReadOnlyList<StoredSetupKey> usableKeys) => _findMatch(usableKeys);
