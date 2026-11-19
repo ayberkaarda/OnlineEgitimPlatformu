@@ -99,6 +99,44 @@ namespace OnlineEgitim.Data.Persistence.Migrations
                     b.ToTable("OgrenciKurslar", (string)null);
                 });
 
+            modelBuilder.Entity("OnlineEgitim.Domain.Entities.SetupKey", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("AnahtarID");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("Consumed")
+                        .HasColumnType("bit")
+                        .HasColumnName("Tuketildi");
+
+                    b.Property<DateTime?>("ConsumedUtc")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("TuketimTarihi");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("Olusturma");
+
+                    b.Property<DateTime>("ExpiresUtc")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("SonKullanma");
+
+                    b.Property<byte[]>("KeyHash")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("binary(32)")
+                        .HasColumnName("AnahtarOzeti")
+                        .IsFixedLength();
+
+                    b.HasKey("Id")
+                        .HasName("PK_KurulumAnahtarlari");
+
+                    b.ToTable("KurulumAnahtarlari", (string)null);
+                });
+
             modelBuilder.Entity("OnlineEgitim.Domain.Entities.Student", b =>
                 {
                     b.Property<int>("Id")

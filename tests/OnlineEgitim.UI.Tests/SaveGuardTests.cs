@@ -1,3 +1,5 @@
+using OnlineEgitim.Business.Services;
+using OnlineEgitim.Domain.Entities;
 using OnlineEgitim.UI.Infrastructure;
 using OnlineEgitim.UI.Tests.Support;
 using static OnlineEgitim.UI.Tests.Support.StaThread;
@@ -28,16 +30,22 @@ public sealed class SaveGuardTests
         Assert.False(Find<LinkLabel>(form, "lnkKurulum").Enabled);
     });
 
-    [Fact]
-    public void SignIn_TeacherSetupLink_OnlyWhileNoTeacherExists() => Run(() =>
+    [Theory]
+    [InlineData(SetupStage.EmptyDatabase, false, false)]
+    [InlineData(SetupStage.FirstTeacherNeedsKey, true, true)]
+    [InlineData(SetupStage.TeacherPasswordNeedsKey, false, true)]
+    [InlineData(SetupStage.Completed, false, false)]
+    public void SignIn_FounderLinks_FollowTheSetupStage(SetupStage stage, bool setupLink, bool keyRecovery) => Run(() =>
     {
         using var form = new GirisForm(new PendingAuthService(), new NoFormsFactory());
-        Assert.False(form.OfferTeacherSetup);
+        Assert.False(form.OffersFirstTeacherSetup);
+        Assert.False(form.OffersSetupKeyRecovery);
 
-        form.OfferTeacherSetup = true;
+        form.Stage = stage;
 
-        Assert.True(form.OfferTeacherSetup);
-        Assert.Contains("kurucu anahtarı", Find<LinkLabel>(form, "lnkKurulum").Text, StringComparison.Ordinal);
+        Assert.Equal(setupLink, form.OffersFirstTeacherSetup);
+        Assert.Equal(keyRecovery, form.OffersSetupKeyRecovery);
+        Assert.Contains("kurulum anahtarı", Find<LinkLabel>(form, "lnkKurulum").Text, StringComparison.Ordinal);
     });
 
     [Fact]
@@ -189,7 +197,7 @@ public sealed class SaveGuardTests
         var setup = new PendingSetupService();
         using var form = new HesapKurtarmaForm(recovery, setup) { Prompts = new RecordingPrompts() };
         Assert.False(form.TeacherMode);
-        Assert.Equal(0, setup.KeyRequests); // no key file for a student recovery
+        Assert.False(Find<RadioButton>(form, "rbOgretmen").Enabled); // no key is accepted by default
         Assert.Equal(HesapKurtarmaForm.StudentHint, Find<Label>(form, "lblAciklama").Text);
         Find<TextBox>(form, "txtAd").Text = "Şifresiz Öğrenci";
         Find<TextBox>(form, "txtKod").Text = "ABCDE-FGHJK";
@@ -206,10 +214,14 @@ public sealed class SaveGuardTests
         Assert.Null(first.Result);
         Assert.True(Find<Button>(form, "btnKurtar").Enabled);
 
+        setup.EnvironmentKey = new SetupKeyPrefill("0123-4567-89AB-CDEF-0123-4567-89AB-CDEF", false);
+        form.SetupKeyAccepted = true;
+        Assert.True(Find<RadioButton>(form, "rbOgretmen").Enabled);
+        Assert.Equal(HesapKurtarmaForm.StudentHintWithSetupKey, Find<Label>(form, "lblAciklama").Text);
         form.TeacherMode = true;
-        Assert.Equal(1, setup.KeyRequests);
         Assert.Equal("Kurulum Anahtarı", Find<Label>(form, "lblKod").Text);
-        Assert.Contains(@"C:\Kurulum\setup-key.txt", Find<Label>(form, "lblAciklama").Text, StringComparison.Ordinal);
+        Assert.Contains("docs/issue-setup-key.sql", Find<Label>(form, "lblAciklama").Text, StringComparison.Ordinal);
+        Assert.Equal("0123-4567-89AB-CDEF-0123-4567-89AB-CDEF", Find<TextBox>(form, "txtKod").Text); // filled in, checked by the database
         Find<TextBox>(form, "txtKod").Text = "KURUCU-ANAHTARI";
         _ = form.RecoverAsync();
         Assert.Equal("teacher:Şifresiz Öğrenci/KURUCU-ANAHTARI", recovery.Calls[^1]);
@@ -249,10 +261,36 @@ public sealed class SaveGuardTests
         Assert.Equal(1, setup.CreateCalls);
         Assert.Equal("ABCDE-FGHJK-MNPQR-STVWX", setup.LastKey);
         Assert.True(Find<TextBox>(form, "txtAnahtar").UseSystemPasswordChar);
-        Assert.Contains(@"C:\Kurulum\setup-key.txt", Find<Label>(form, "lblAciklama").Text, StringComparison.Ordinal);
+        Assert.Contains("docs/issue-setup-key.sql", Find<Label>(form, "lblAciklama").Text, StringComparison.Ordinal);
         Assert.False(first.IsCompleted);
         Assert.Null(second.Result);
         Assert.False(Find<Button>(form, "btnOlustur").Enabled);
         Assert.False(Find<Button>(form, "btnIptal").Enabled);
+    });
+
+    /// <summary>
+    /// EGITIM_SETUP_KEY only fills in the key field. An invalid value is shown as a configuration error
+    /// and fills in nothing; an empty database needs no key at all.
+    /// </summary>
+    [Fact]
+    public void Setup_EnvironmentKey_OnlyFillsInTheForm() => Run(() =>
+    {
+        var setup = new PendingSetupService { EnvironmentKey = new SetupKeyPrefill("0123-4567-89AB-CDEF-0123-4567-89AB-CDEF", false) };
+        using (var form = new IlkKurulumForm(setup) { Prompts = new RecordingPrompts() })
+        {
+            Assert.Equal("0123-4567-89AB-CDEF-0123-4567-89AB-CDEF", Find<TextBox>(form, "txtAnahtar").Text);
+            Assert.Equal(0, setup.CreateCalls);
+        }
+
+        setup.EnvironmentKey = new SetupKeyPrefill(null, true);
+        using (var form = new IlkKurulumForm(setup) { Prompts = new RecordingPrompts() })
+        {
+            Assert.Empty(Find<TextBox>(form, "txtAnahtar").Text);
+            Assert.Contains(IlkKurulumForm.EnvironmentKeyInvalid, Find<Label>(form, "lblAciklama").Text, StringComparison.Ordinal);
+
+            form.KeyRequired = false;
+            Assert.Empty(Find<TextBox>(form, "txtAnahtar").Text);
+            Assert.DoesNotContain("EGITIM_SETUP_KEY", Find<Label>(form, "lblAciklama").Text, StringComparison.Ordinal);
+        }
     });
 }

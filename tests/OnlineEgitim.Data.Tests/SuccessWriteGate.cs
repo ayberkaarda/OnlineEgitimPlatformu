@@ -69,8 +69,11 @@ internal static class SuccessWriteGateExtensions
         public Task<bool> AnyAccountAsync(CancellationToken cancellationToken = default) =>
             inner.AnyAccountAsync(cancellationToken);
 
-        public Task<FirstTeacherResult> AddFirstTeacherAsync(Teacher teacher, Func<bool> authorize, CancellationToken cancellationToken = default) =>
-            inner.AddFirstTeacherAsync(teacher, authorize, cancellationToken);
+        public Task<SetupStage> GetSetupStageAsync(CancellationToken cancellationToken = default) =>
+            inner.GetSetupStageAsync(cancellationToken);
+
+        public Task<FirstTeacherResult> AddFirstTeacherAsync(Teacher teacher, SetupKeyAttempt? setupKey, CancellationToken cancellationToken = default) =>
+            inner.AddFirstTeacherAsync(teacher, setupKey, cancellationToken);
 
         public Task<TeacherProfile?> GetTeacherAsync(int id, CancellationToken cancellationToken = default) =>
             inner.GetTeacherAsync(id, cancellationToken);
@@ -84,7 +87,12 @@ internal static class SuccessWriteGateExtensions
         public Task<bool> CompleteStudentRecoveryAsync(StudentRecoveryState verified, DateTime now, string newPasswordHash, CancellationToken cancellationToken = default) =>
             inner.CompleteStudentRecoveryAsync(verified, now, newPasswordHash, cancellationToken);
 
-        public Task<int?> SetPasswordOfPasswordlessTeacherAsync(string fullName, string newPasswordHash, Func<bool> authorize, CancellationToken cancellationToken = default) =>
-            inner.SetPasswordOfPasswordlessTeacherAsync(fullName, newPasswordHash, authorize, cancellationToken);
+        public Task<SetupKeyWriteResult> SetFirstPasswordWithSetupKeyAsync(
+            AccountRole role,
+            string fullName,
+            string newPasswordHash,
+            SetupKeyAttempt setupKey,
+            CancellationToken cancellationToken = default) =>
+            inner.SetFirstPasswordWithSetupKeyAsync(role, fullName, newPasswordHash, setupKey, cancellationToken);
     }
 }

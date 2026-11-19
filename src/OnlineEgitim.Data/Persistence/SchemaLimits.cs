@@ -17,6 +17,9 @@ internal static class SchemaLimits
     /// <summary>Room for a PBKDF2 hash; the original columns held plain text in 100 characters.</summary>
     public const int PasswordLength = 256;
 
+    /// <summary>A SHA-256 hash of a setup key (BINARY(32)).</summary>
+    public const int SetupKeyHashLength = 32;
+
     // Plain literals: the same text has to work on SQLite, which has no N'' prefix.
     public const string FailedLoginCheck = "[BasarisizGiris] >= 0";
 

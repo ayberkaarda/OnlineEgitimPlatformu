@@ -58,13 +58,17 @@ internal sealed class SqlServerTestDatabase : IAsyncDisposable
     public ServiceProvider BuildServices(
         Action<IServiceCollection>? configure = null,
         Persistence.DataAccessOptions? options = null,
-        Action<Microsoft.EntityFrameworkCore.DbContextOptionsBuilder>? configureContext = null)
+        Action<Microsoft.EntityFrameworkCore.DbContextOptionsBuilder>? configureContext = null,
+        bool pooling = true)
     {
+        var connectionString = pooling
+            ? ConnectionString
+            : new SqlConnectionStringBuilder(ConnectionString) { Pooling = false }.ConnectionString;
         var services = new ServiceCollection();
         services.AddDataAccess(
             builder =>
             {
-                builder.UseSqlServer(ConnectionString);
+                builder.UseSqlServer(connectionString);
                 configureContext?.Invoke(builder);
             },
             options);
@@ -124,6 +128,49 @@ internal sealed class SqlServerTestDatabase : IAsyncDisposable
         }
 
         return Convert.ToInt32(await command.ExecuteScalarAsync(ct), CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Runs docs/issue-setup-key.sql as the database owner (or with <paramref name="asUser"/>
+    /// impersonated) and returns the key it shows once.
+    /// </summary>
+    public async Task<string> IssueSetupKeyAsync(CancellationToken ct, bool revokeUnused = false, string? asUser = null)
+    {
+        var script = await File.ReadAllTextAsync(RepositoryFile("docs", "issue-setup-key.sql"), ct);
+        if (revokeUnused)
+        {
+            script = script.Replace("DECLARE @RevokeUnusedKeys bit = 0;", "DECLARE @RevokeUnusedKeys bit = 1;", StringComparison.Ordinal);
+        }
+
+        if (asUser is not null)
+        {
+            script = "EXECUTE AS USER = N'" + asUser + "';\n" + script;
+        }
+
+        // Impersonation stays on a connection, so such a connection never goes back to the pool.
+        await using var connection = new SqlConnection(asUser is null
+            ? ConnectionString
+            : new SqlConnectionStringBuilder(ConnectionString) { Pooling = false }.ConnectionString);
+        await connection.OpenAsync(ct);
+        await using var command = new SqlCommand(script, connection);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        Assert.True(await reader.ReadAsync(ct));
+        return reader.GetString(0);
+    }
+
+    /// <summary>A file of the repository, found by walking up from the test output folder.</summary>
+    public static string RepositoryFile(params string[] parts)
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+        {
+            var path = Path.Combine([directory.FullName, .. parts]);
+            if (File.Exists(path))
+            {
+                return path;
+            }
+        }
+
+        throw new FileNotFoundException("Repository file not found.", Path.Combine(parts));
     }
 
     public async ValueTask DisposeAsync()

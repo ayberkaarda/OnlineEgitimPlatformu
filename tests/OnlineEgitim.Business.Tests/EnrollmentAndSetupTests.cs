@@ -81,24 +81,30 @@ public sealed class EnrollmentServiceTests
 
 public sealed class SetupServiceTests
 {
-    private const string Key = "AAAAA-BBBBB-CCCCC-DDDDD";
+    private const string Key = "0123-4567-89AB-CDEF-0123-4567-89AB-CDEF";
+
+    private static readonly StoredSetupKey Stored = new(7, SetupKeyPolicy.Hash("0123456789ABCDEF0123456789ABCDEF"));
 
     private readonly Mock<IAccountRepository> _accounts = new(MockBehavior.Strict);
-    private readonly Mock<ISetupKeyStore> _keys = new(MockBehavior.Strict);
     private readonly PasswordHasher _hasher = new(iterations: 1_000);
     private readonly RecordingAudit _audit = new();
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private SetupService Service => new(_accounts.Object, _hasher, _keys.Object, _audit);
+    private SetupService Service => new(
+        _accounts.Object,
+        _hasher,
+        new SetupKeyGate(TimeProvider.System, new SetupKeyThrottle(TimeSpan.Zero)),
+        new SetupKeyEnvironment(null),
+        _audit);
 
-    /// <summary>The repository runs the authorization inside its transaction, as the real one does.</summary>
+    /// <summary>The repository checks the key against the stored one inside its transaction, as the real one does.</summary>
     private void RepositoryCreates(int id, Action<Teacher>? stored = null) =>
-        _accounts.Setup(a => a.AddFirstTeacherAsync(It.IsAny<Teacher>(), It.IsAny<Func<bool>>(), It.IsAny<CancellationToken>()))
-            .Returns<Teacher, Func<bool>, CancellationToken>((t, authorize, _) =>
+        _accounts.Setup(a => a.AddFirstTeacherAsync(It.IsAny<Teacher>(), It.IsAny<SetupKeyAttempt?>(), It.IsAny<CancellationToken>()))
+            .Returns<Teacher, SetupKeyAttempt?, CancellationToken>((t, attempt, _) =>
             {
                 stored?.Invoke(t);
-                return Task.FromResult(authorize()
+                return Task.FromResult(attempt?.FindMatch([Stored]) == Stored.Id
                     ? new FirstTeacherResult(FirstTeacherStatus.Created, id)
                     : new FirstTeacherResult(FirstTeacherStatus.NotAuthorized, 0));
             });
@@ -108,7 +114,6 @@ public sealed class SetupServiceTests
     {
         Teacher? stored = null;
         RepositoryCreates(1, t => stored = t);
-        _keys.Setup(k => k.TryConsume(Key)).Returns(true);
 
         var session = await Service.CreateFirstTeacherAsync(Key, " Ada Kurucu ", " Matematik ", "Gizli.Sifre1", "Gizli.Sifre1", Ct);
 
@@ -124,19 +129,21 @@ public sealed class SetupServiceTests
     public async Task Create_WrongKey_IsRefusedAndAudited()
     {
         RepositoryCreates(1);
-        _keys.Setup(k => k.TryConsume("YANLIS")).Returns(false);
 
-        var error = await Assert.ThrowsAsync<BusinessRuleException>(
-            () => Service.CreateFirstTeacherAsync("YANLIS", "Ada Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
+        foreach (var wrong in new[] { "YANLIS", Key[..^1] + "0", Key + "0", new string('-', 39) })
+        {
+            var error = await Assert.ThrowsAsync<BusinessRuleException>(
+                () => Service.CreateFirstTeacherAsync(wrong, "Ada Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
+            Assert.Equal(SetupService.SetupKeyInvalid, error.Message);
+        }
 
-        Assert.Equal(SetupService.SetupKeyInvalid, error.Message);
-        Assert.Equal([(AuditEvent.SetupRefused, (AccountRole?)null)], _audit.Events);
+        Assert.All(_audit.Events, e => Assert.Equal((AuditEvent.SetupRefused, (AccountRole?)null), e));
     }
 
     [Fact]
     public async Task Create_TeacherAlreadyExists_IsRefused()
     {
-        _accounts.Setup(a => a.AddFirstTeacherAsync(It.IsAny<Teacher>(), It.IsAny<Func<bool>>(), It.IsAny<CancellationToken>()))
+        _accounts.Setup(a => a.AddFirstTeacherAsync(It.IsAny<Teacher>(), It.IsAny<SetupKeyAttempt?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new FirstTeacherResult(FirstTeacherStatus.TeacherExists, 0));
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(
@@ -144,7 +151,6 @@ public sealed class SetupServiceTests
 
         Assert.Equal(SetupService.AlreadyDone, error.Message);
         Assert.Empty(_audit.Events);
-        _keys.VerifyNoOtherCalls(); // the key is not used up
     }
 
     [Theory]
@@ -153,114 +159,74 @@ public sealed class SetupServiceTests
     [InlineData(Key, "Ada Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre2")]
     [InlineData(Key, "Ada Kurucu", "Matematik", "kisa", "kisa")]
     [InlineData(Key, "Ada<script>", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1")]
-    [InlineData(" ", "Ada Kurucu", "Matematik", "Gizli.Sifre1", "Gizli.Sifre1")]
     public async Task Create_InvalidInput_IsRefusedBeforeAnyWrite(string? key, string? name, string? specialty, string password, string repeat)
     {
         await Assert.ThrowsAsync<BusinessRuleException>(() => Service.CreateFirstTeacherAsync(key, name, specialty, password, repeat, Ct));
 
         _accounts.VerifyNoOtherCalls();
-        _keys.VerifyNoOtherCalls();
     }
 }
 
-public sealed class FileSetupKeyStoreTests : IDisposable
+public sealed class SetupKeyTests
 {
-    private readonly string _directory = Path.Combine(Path.GetTempPath(), "OnlineEgitimKeyTest_" + Guid.NewGuid().ToString("N"));
-
-    public void Dispose()
-    {
-        if (Directory.Exists(_directory))
-        {
-            Directory.Delete(_directory, recursive: true);
-        }
-    }
-
-    [Fact]
-    public void FileKey_WorksOnceAndIsDeleted()
-    {
-        var store = new FileSetupKeyStore(_directory, environmentKey: null);
-        store.EnsureIssued();
-        var path = Assert.IsType<string>(store.KeyFilePath);
-        var key = File.ReadAllText(path).Trim();
-        store.EnsureIssued(); // keeps the issued key
-
-        Assert.Matches("^[0-9A-Z]{5}(-[0-9A-Z]{5}){3}$", key);
-        Assert.Equal(key, File.ReadAllText(path).Trim());
-        Assert.False(store.TryConsume("YANLIS-" + key));
-        Assert.False(store.TryConsume(null));
-        Assert.True(File.Exists(path));
-        Assert.True(store.TryConsume(" " + key.ToLowerInvariant().Replace("-", " ", StringComparison.Ordinal) + " "));
-        Assert.False(File.Exists(path));
-        Assert.False(store.TryConsume(key));
-        Assert.Empty(Directory.GetFiles(_directory));
-
-        store.EnsureIssued(); // a new key for the next founder operation
-        Assert.NotEqual(key, File.ReadAllText(path).Trim());
-    }
-
-    [Fact]
-    public void FileKey_ConcurrentConsumers_ExactlyOneWins()
-    {
-        var store = new FileSetupKeyStore(_directory, environmentKey: null);
-        store.EnsureIssued();
-        var key = File.ReadAllText(store.KeyFilePath!).Trim();
-
-        var wins = 0;
-        Parallel.For(0, 16, _ =>
-        {
-            if (new FileSetupKeyStore(_directory, environmentKey: null).TryConsume(key))
-            {
-                Interlocked.Increment(ref wins);
-            }
-        });
-
-        Assert.Equal(1, wins);
-    }
-
-    [Fact]
-    public void EnvironmentKey_WorksOnceAndWritesNoKeyFile()
-    {
-        const string Key = "ortam-anahtari-1234567";
-        var store = new FileSetupKeyStore(_directory, Key);
-        store.EnsureIssued();
-
-        Assert.Null(store.KeyFilePath);
-        Assert.False(store.TryConsume("ortam-anahtari-1234568"));
-        Assert.True(store.TryConsume(Key));
-        Assert.False(store.TryConsume(Key));
-        Assert.False(new FileSetupKeyStore(_directory, Key).TryConsume(Key));
-        Assert.All(Directory.GetFiles(_directory), f => Assert.DoesNotContain("ortam", File.ReadAllText(f), StringComparison.OrdinalIgnoreCase));
-    }
-
     /// <summary>
-    /// The minimum length counts the characters that remain after normalization: dashes and spaces
-    /// do not make a short key long. A rejected environment key is a configuration error, not a reason
-    /// to fall back to another key: no key file is issued and nothing is accepted.
+    /// The form of a key (32 hexadecimal characters) is checked after normalization: dashes and spaces
+    /// do not make a short value long. A set but invalid EGITIM_SETUP_KEY is a configuration error
+    /// and fills in nothing; it is never a key on its own.
     /// </summary>
     [Theory]
-    [InlineData("----------------", "-")]
-    [InlineData("A---------------", "a")]
-    [InlineData("      kisa      ", "kisa")]
-    [InlineData("k i s a - a n a h t a r", "kisaanahtar")]
-    public void EnvironmentKey_NormalizedLengthMustMeetMinimum(string configured, string candidate)
+    [InlineData("--------------------------------")]
+    [InlineData("A-------------------------------")]
+    [InlineData("      kisa                      ")]
+    [InlineData("0123 4567 89ab cdef 0123 4567 89ab cde")]
+    [InlineData("0123-4567-89AB-CDEF-0123-4567-89AB-CDEG")]
+    [InlineData("0123-4567-89AB-CDEF-0123-4567-89AB-CDEF-0")]
+    public void EnvironmentKey_NormalizedLengthMustMeetMinimum(string configured)
     {
-        Assert.True(configured.Length >= FileSetupKeyStore.MinimumEnvironmentKeyLength);
-        var store = new FileSetupKeyStore(_directory, configured);
-        store.EnsureIssued();
+        Assert.True(configured.Length >= SetupKeyPolicy.KeyLength);
 
-        Assert.True(store.EnvironmentKeyInvalid);
-        Assert.Null(store.KeyFilePath);
-        Assert.False(store.TryConsume(candidate));
-        Assert.False(store.TryConsume(configured));
-        Assert.False(Directory.Exists(_directory) && Directory.GetFiles(_directory).Length > 0);
+        var environment = new SetupKeyEnvironment(configured);
+
+        Assert.True(environment.IsSet);
+        Assert.False(environment.IsValid);
+        Assert.Null(environment.Key);
+        Assert.False(SetupKeyPolicy.TryNormalize(configured, out _));
+    }
+
+    [Theory]
+    [InlineData("0123456789ABCDEF0123456789ABCDEF")]
+    [InlineData(" 0123-4567-89ab-cdef 0123-4567-89AB-cdef ")]
+    public void EnvironmentKey_ValidAfterNormalization_FillsInTheGroupedKey(string configured)
+    {
+        var environment = new SetupKeyEnvironment(configured);
+
+        Assert.True(environment.IsValid);
+        Assert.Equal("0123-4567-89AB-CDEF-0123-4567-89AB-CDEF", environment.Key);
     }
 
     [Fact]
-    public void EnvironmentKey_LongEnoughAfterNormalization_IsAccepted()
+    public void EnvironmentKey_NotSet_IsNeitherValidNorAnError()
     {
-        var store = new FileSetupKeyStore(_directory, " ortam-anahtari-1234 ");
+        var environment = new SetupKeyEnvironment(null);
 
-        Assert.False(store.EnvironmentKeyInvalid);
-        Assert.True(store.TryConsume("ORTAMANAHTARI1234"));
+        Assert.False(environment.IsSet);
+        Assert.Null(environment.Key);
+    }
+
+    [Fact]
+    public void Attempt_ComparesWithEveryUsableKeyAndFindsTheMatchingOne()
+    {
+        var gate = new SetupKeyGate(TimeProvider.System, new SetupKeyThrottle(TimeSpan.Zero));
+        StoredSetupKey[] stored =
+        [
+            new(1, SetupKeyPolicy.Hash("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")),
+            new(2, SetupKeyPolicy.Hash("0123456789ABCDEF0123456789ABCDEF")),
+        ];
+
+        Assert.Equal(2, gate.CreateAttempt("0123-4567-89ab-cdef-0123-4567-89ab-cdef")!.FindMatch(stored));
+        Assert.Null(gate.CreateAttempt("0123-4567-89ab-cdef-0123-4567-89ab-cdee")!.FindMatch(stored));
+        Assert.Null(gate.CreateAttempt("-")!.FindMatch(stored));
+        Assert.Null(gate.CreateAttempt(" "));
+        Assert.Null(gate.CreateAttempt(null));
     }
 }

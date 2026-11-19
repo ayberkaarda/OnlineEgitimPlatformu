@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Text;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 using OnlineEgitim.Business;
@@ -34,14 +37,33 @@ internal static class TestServices
     {
         services.AddSingleton<TimeProvider>(clock);
         services.AddSingleton<IPasswordHasher>(Hasher);
-        services.AddSingleton<ISetupKeyStore>(new TestSetupKey());
+        services.AddSingleton(new SetupKeyEnvironment(null));
+        services.AddSingleton(new SetupKeyThrottle(TimeSpan.Zero));
         services.AddBusinessServices();
         return services;
     }
 
-    /// <summary>The setup key store of <paramref name="provider"/>.</summary>
-    public static TestSetupKey SetupKey(this IServiceProvider provider) =>
-        (TestSetupKey)provider.GetRequiredService<ISetupKeyStore>();
+    /// <summary>
+    /// Stores a setup key the way docs/issue-setup-key.sql does (SHA-256 of 32 upper case hexadecimal
+    /// characters, 24 hours from <paramref name="now"/>) and returns it; for SQLite, which cannot run
+    /// the script. The SQL Server tests use the script itself.
+    /// </summary>
+    public static async Task<string> AddSetupKeyAsync(EgitimDbContext db, DateTime now, CancellationToken ct)
+    {
+        var key = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+        db.SetupKeys.Add(new SetupKey
+        {
+            KeyHash = SHA256.HashData(Encoding.ASCII.GetBytes(key)),
+            CreatedUtc = now,
+            ExpiresUtc = now + TimeSpan.FromHours(24),
+        });
+        await db.SaveChangesAsync(ct);
+        return key;
+    }
+
+    /// <summary>How many setup keys are marked used.</summary>
+    public static Task<int> ConsumedSetupKeysAsync(EgitimDbContext db, CancellationToken ct) =>
+        db.SetupKeys.CountAsync(k => k.Consumed, ct);
 
     /// <summary>Inserts the test accounts and courses into an empty database.</summary>
     public static async Task SeedAsync(EgitimDbContext db, CancellationToken ct)
@@ -61,46 +83,6 @@ internal static class TestServices
     }
 
     public static UserSession Student(int id) => new(AccountRole.Student, id, "ogrenci" + id);
-
-    /// <summary>An in-memory single use setup key; <see cref="Reissue"/> makes <see cref="Key"/> valid again.</summary>
-    internal sealed class TestSetupKey : ISetupKeyStore
-    {
-        public const string Key = "TEST1-SETUP-KEY00-ABCDE";
-
-        private readonly Lock _gate = new();
-        private bool _used;
-
-        public string? KeyFilePath => null;
-
-        public int Consumed { get; private set; }
-
-        public void EnsureIssued()
-        {
-        }
-
-        public void Reissue()
-        {
-            lock (_gate)
-            {
-                _used = false;
-            }
-        }
-
-        public bool TryConsume(string? candidate)
-        {
-            lock (_gate)
-            {
-                if (_used || candidate is null || FileSetupKeyStore.Normalize(candidate) != FileSetupKeyStore.Normalize(Key))
-                {
-                    return false;
-                }
-
-                _used = true;
-                Consumed++;
-                return true;
-            }
-        }
-    }
 
     public static UserSession Teacher(int id) => new(AccountRole.Teacher, id, "ogretmen" + id);
 }

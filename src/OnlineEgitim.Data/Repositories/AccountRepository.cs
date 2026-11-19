@@ -112,10 +112,27 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
             || await db.Students.AnyAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<FirstTeacherResult> AddFirstTeacherAsync(Teacher teacher, Func<bool> authorize, CancellationToken cancellationToken = default)
+    public async Task<SetupStage> GetSetupStageAsync(CancellationToken cancellationToken = default)
+    {
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        if (await db.Teachers.AnyAsync(t => t.PasswordFormat != PasswordFormat.None, cancellationToken).ConfigureAwait(false))
+        {
+            return SetupStage.Completed;
+        }
+
+        if (await db.Teachers.AnyAsync(cancellationToken).ConfigureAwait(false))
+        {
+            return SetupStage.TeacherPasswordNeedsKey;
+        }
+
+        return await db.Students.AnyAsync(cancellationToken).ConfigureAwait(false)
+            ? SetupStage.FirstTeacherNeedsKey
+            : SetupStage.EmptyDatabase;
+    }
+
+    public async Task<FirstTeacherResult> AddFirstTeacherAsync(Teacher teacher, SetupKeyAttempt? setupKey, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(teacher);
-        ArgumentNullException.ThrowIfNull(authorize);
 
         try
         {
@@ -130,10 +147,20 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
                 return new FirstTeacherResult(FirstTeacherStatus.TeacherExists, 0);
             }
 
-            // Decided while the lock is held: only the setup that gets here first can use the authority.
-            if (!authorize())
+            // An empty database is set up by whoever opens it first. Once students exist, the first
+            // teacher needs the setup key, decided while the locks are held and used up in this
+            // transaction: a failed write below rolls the use back.
+            if (await AccountLocks.AnyStudentLockedAsync(db, cancellationToken).ConfigureAwait(false))
             {
-                return new FirstTeacherResult(FirstTeacherStatus.NotAuthorized, 0);
+                if (setupKey is null)
+                {
+                    return new FirstTeacherResult(FirstTeacherStatus.KeyRequired, 0);
+                }
+
+                if (!await UseSetupKeyAsync(db, setupKey, cancellationToken).ConfigureAwait(false))
+                {
+                    return new FirstTeacherResult(FirstTeacherStatus.NotAuthorized, 0);
+                }
             }
 
             var entity = new Teacher
@@ -238,14 +265,84 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
         return updated == 1;
     }
 
-    public async Task<int?> SetPasswordOfPasswordlessTeacherAsync(string fullName, string newPasswordHash, Func<bool> authorize, CancellationToken cancellationToken = default)
+    public async Task<SetupKeyWriteResult> SetFirstPasswordWithSetupKeyAsync(
+        AccountRole role,
+        string fullName,
+        string newPasswordHash,
+        SetupKeyAttempt setupKey,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(fullName);
         ArgumentNullException.ThrowIfNull(newPasswordHash);
-        ArgumentNullException.ThrowIfNull(authorize);
+        ArgumentNullException.ThrowIfNull(setupKey);
+        if (role is not (AccountRole.Student or AccountRole.Teacher))
+        {
+            throw new ArgumentOutOfRangeException(nameof(role), role, "Unknown role.");
+        }
 
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken).ConfigureAwait(false);
+
+        // The teacher lock decides, until the commit, that no teacher can sign in with a password; a
+        // concurrent recovery or setup waits here and then sees this one's result.
+        await AccountLocks.AnyTeacherLockedAsync(db, cancellationToken).ConfigureAwait(false);
+        if (await AnyTeacherWithPasswordAsync(db, cancellationToken).ConfigureAwait(false))
+        {
+            return new SetupKeyWriteResult(SetupKeyWriteStatus.SetupCompleted, 0);
+        }
+
+        // The key before the name: a wrong key is counted whatever name was given.
+        if (!await UseSetupKeyAsync(db, setupKey, cancellationToken).ConfigureAwait(false))
+        {
+            return new SetupKeyWriteResult(SetupKeyWriteStatus.NotAuthorized, 0);
+        }
+
+        // Returning before the commit rolls the key's use back.
+        var id = role == AccountRole.Teacher
+            ? await SetFirstTeacherPasswordAsync(db, fullName, newPasswordHash, cancellationToken).ConfigureAwait(false)
+            : await SetFirstStudentPasswordAsync(db, fullName, newPasswordHash, cancellationToken).ConfigureAwait(false);
+        if (id is not { } accountId)
+        {
+            return new SetupKeyWriteResult(SetupKeyWriteStatus.NoSuchAccount, 0);
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return new SetupKeyWriteResult(SetupKeyWriteStatus.Done, accountId);
+    }
+
+    private static Task<bool> AnyTeacherWithPasswordAsync(EgitimDbContext db, CancellationToken cancellationToken) =>
+        db.Teachers.AnyAsync(t => t.PasswordFormat != PasswordFormat.None, cancellationToken);
+
+    /// <summary>
+    /// Checks <paramref name="attempt"/> against the usable setup keys and, when one matches, uses it
+    /// up with a conditional UPDATE of Tuketildi and TuketimTarihi (the only columns the application's
+    /// login may change) inside the caller's transaction, so the use commits or rolls back with the
+    /// caller's write. A wrong key writes nothing.
+    /// </summary>
+    private static async Task<bool> UseSetupKeyAsync(EgitimDbContext db, SetupKeyAttempt attempt, CancellationToken cancellationToken)
+    {
+        var now = attempt.Now;
+        var keys = await AccountLocks.UsableSetupKeysLockedAsync(db, now, cancellationToken).ConfigureAwait(false);
+        if (attempt.FindMatch(keys) is not { } id)
+        {
+            return false;
+        }
+
+        // The WHERE clause is the final decision: of two transactions with the same key only one can
+        // match the unused row.
+        var consumed = await db.SetupKeys
+            .Where(k => k.Id == id && !k.Consumed && k.ExpiresUtc > now)
+            .ExecuteUpdateAsync(
+                s => s
+                    .SetProperty(k => k.Consumed, true)
+                    .SetProperty(k => k.ConsumedUtc, now),
+                cancellationToken)
+            .ConfigureAwait(false);
+        return consumed == 1;
+    }
+
+    private static async Task<int?> SetFirstTeacherPasswordAsync(EgitimDbContext db, string fullName, string newPasswordHash, CancellationToken cancellationToken)
+    {
         var id = await db.Teachers
             .Where(t => t.FullName == fullName && t.PasswordFormat == PasswordFormat.None)
             .Select(t => (int?)t.Id)
@@ -256,8 +353,6 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
             return null;
         }
 
-        // The UPDATE holds the row until the commit, so a concurrent recovery of the same teacher
-        // matches no row and cannot use a second key.
         var updated = await db.Teachers
             .Where(t => t.Id == id && t.PasswordFormat == PasswordFormat.None)
             .ExecuteUpdateAsync(
@@ -268,13 +363,34 @@ internal sealed class AccountRepository(IDbContextFactory<EgitimDbContext> conte
                     .SetProperty(a => a.LockoutEnd, (DateTime?)null),
                 cancellationToken)
             .ConfigureAwait(false);
-        if (updated != 1 || !authorize())
+        return updated == 1 ? id : null;
+    }
+
+    private static async Task<int?> SetFirstStudentPasswordAsync(EgitimDbContext db, string fullName, string newPasswordHash, CancellationToken cancellationToken)
+    {
+        var id = await db.Students
+            .Where(s => s.FullName == fullName && s.PasswordFormat == PasswordFormat.None)
+            .Select(s => (int?)s.Id)
+            .SingleOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (id is null)
         {
             return null;
         }
 
-        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-        return id;
+        var updated = await db.Students
+            .Where(s => s.Id == id && s.PasswordFormat == PasswordFormat.None)
+            .ExecuteUpdateAsync(
+                s => s
+                    .SetProperty(a => a.PasswordHash, newPasswordHash)
+                    .SetProperty(a => a.PasswordFormat, PasswordFormat.Pbkdf2)
+                    .SetProperty(a => a.RecoveryCodeHash, (string?)null)
+                    .SetProperty(a => a.RecoveryCodeExpires, (DateTime?)null)
+                    .SetProperty(a => a.FailedLoginCount, 0)
+                    .SetProperty(a => a.LockoutEnd, (DateTime?)null),
+                cancellationToken)
+            .ConfigureAwait(false);
+        return updated == 1 ? id : null;
     }
 
     private static Task<AccountCredentials?> FindAsync<TAccount>(DbSet<TAccount> accounts, string fullName, CancellationToken cancellationToken)

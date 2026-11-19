@@ -139,19 +139,14 @@ internal sealed class PendingSetupService : ISetupService
 
     public string? LastKey { get; private set; }
 
-    public string? KeyFilePath { get; set; } = @"C:\Kurulum\setup-key.txt";
+    /// <summary>What EGITIM_SETUP_KEY fills in.</summary>
+    public SetupKeyPrefill EnvironmentKey { get; set; } = new(null, false);
 
     public Task<bool> IsSetupRequiredAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
 
-    public Task<bool> IsTeacherMissingAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+    public Task<SetupStage> GetStageAsync(CancellationToken cancellationToken = default) => Task.FromResult(SetupStage.FirstTeacherNeedsKey);
 
-    public int KeyRequests { get; private set; }
-
-    public string? IssueSetupKey()
-    {
-        KeyRequests++;
-        return KeyFilePath;
-    }
+    public SetupKeyPrefill GetEnvironmentKey() => EnvironmentKey;
 
     public Task<UserSession> CreateFirstTeacherAsync(
         string? setupKey,

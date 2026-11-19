@@ -44,14 +44,18 @@ public interface IAccountRepository
     /// <summary>Whether any student or teacher account exists.</summary>
     Task<bool> AnyAccountAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>Where the setup of the database stands; see <see cref="SetupStage"/>.</summary>
+    Task<SetupStage> GetSetupStageAsync(CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Stores <paramref name="teacher"/> only if no teacher exists yet, atomically: of concurrent calls
-    /// at most one succeeds. <paramref name="authorize"/> is the final decision about the caller's
-    /// right to create the first teacher: it is called inside the write transaction, after the check
-    /// found no teacher and while concurrent setups wait, and nothing is written when it returns
-    /// <see langword="false"/>.
+    /// at most one succeeds. An empty database needs no key. A database with students needs
+    /// <paramref name="setupKey"/>: the key is checked and used up inside the write transaction, after
+    /// the check found no teacher and while concurrent setups wait, with a conditional UPDATE. When the
+    /// write fails the key stays unused; a wrong key writes nothing. There is no way to create a key
+    /// here: keys come only from the database owner's script.
     /// </summary>
-    Task<FirstTeacherResult> AddFirstTeacherAsync(Teacher teacher, Func<bool> authorize, CancellationToken cancellationToken = default);
+    Task<FirstTeacherResult> AddFirstTeacherAsync(Teacher teacher, SetupKeyAttempt? setupKey, CancellationToken cancellationToken = default);
 
     Task<TeacherProfile?> GetTeacherAsync(int id, CancellationToken cancellationToken = default);
 
@@ -80,14 +84,64 @@ public interface IAccountRepository
     Task<bool> CompleteStudentRecoveryAsync(StudentRecoveryState verified, DateTime now, string newPasswordHash, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gives the teacher who signs in with <paramref name="fullName"/> and has no password its first
-    /// password (a PBKDF2 hash, written together with its format). <paramref name="authorize"/> is the
-    /// final decision: it is called inside the transaction after the account was matched and nothing
-    /// is written when it returns <see langword="false"/>.
+    /// Gives the account of <paramref name="role"/> that signs in with <paramref name="fullName"/> and
+    /// has no password its first password (a PBKDF2 hash, written together with its format), with a
+    /// setup key. One serializable transaction holds the teacher table: refused while a teacher can
+    /// sign in with a password; otherwise the key is checked first (before the name is looked at),
+    /// then the account is written and the key used up by a conditional UPDATE. When no
+    /// such account exists or the write fails, the key stays unused.
     /// </summary>
-    /// <returns>The teacher's id, or <see langword="null"/> when nothing was written.</returns>
-    Task<int?> SetPasswordOfPasswordlessTeacherAsync(string fullName, string newPasswordHash, Func<bool> authorize, CancellationToken cancellationToken = default);
+    Task<SetupKeyWriteResult> SetFirstPasswordWithSetupKeyAsync(
+        AccountRole role,
+        string fullName,
+        string newPasswordHash,
+        SetupKeyAttempt setupKey,
+        CancellationToken cancellationToken = default);
 }
+
+/// <summary>
+/// A setup key given by someone, checked by a repository inside its write transaction. The repository
+/// passes every key usable at <see cref="Now"/> (unused and unexpired); <see cref="FindMatch"/> compares
+/// the given key with each of them in constant time and returns the id of the matching one, or
+/// <see langword="null"/>. Wrong keys are never counted against a stored key, so nobody can make the
+/// founder's key unusable by guessing.
+/// </summary>
+public sealed class SetupKeyAttempt
+{
+    private readonly Func<IReadOnlyList<StoredSetupKey>, int?> _findMatch;
+
+    public SetupKeyAttempt(Func<IReadOnlyList<StoredSetupKey>, int?> findMatch, DateTime now)
+    {
+        ArgumentNullException.ThrowIfNull(findMatch);
+
+        _findMatch = findMatch;
+        Now = now;
+    }
+
+    /// <summary>UTC time of the attempt; decides expiry.</summary>
+    public DateTime Now { get; }
+
+    public int? FindMatch(IReadOnlyList<StoredSetupKey> usableKeys) => _findMatch(usableKeys);
+}
+
+/// <summary>Outcome of <see cref="IAccountRepository.SetFirstPasswordWithSetupKeyAsync"/>.</summary>
+public enum SetupKeyWriteStatus
+{
+    /// <summary>The password was set and the key used up; the id is in <see cref="SetupKeyWriteResult.AccountId"/>.</summary>
+    Done = 0,
+
+    /// <summary>The key was wrong, expired or used; nothing was written.</summary>
+    NotAuthorized = 1,
+
+    /// <summary>No account without a password has that name; nothing was written and the key stays unused.</summary>
+    NoSuchAccount = 2,
+
+    /// <summary>A teacher can sign in with a password, so no setup key is accepted; nothing was written.</summary>
+    SetupCompleted = 3,
+}
+
+/// <summary>Result of a write authorized by a setup key.</summary>
+public readonly record struct SetupKeyWriteResult(SetupKeyWriteStatus Status, int AccountId);
 
 /// <summary>Outcome of <see cref="IAccountRepository.AddFirstTeacherAsync"/>.</summary>
 public enum FirstTeacherStatus
@@ -98,8 +152,11 @@ public enum FirstTeacherStatus
     /// <summary>A teacher existed already; nothing was written.</summary>
     TeacherExists = 1,
 
-    /// <summary>The authorization was refused; nothing was written.</summary>
+    /// <summary>The setup key was wrong, expired or used; nothing was written.</summary>
     NotAuthorized = 2,
+
+    /// <summary>The database has accounts, so a setup key is needed and none was given; nothing was written.</summary>
+    KeyRequired = 3,
 }
 
 /// <summary>Result of an attempt to store the first teacher.</summary>

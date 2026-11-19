@@ -23,7 +23,7 @@ public sealed class RecoveryServiceTests
     private RecoveryService Service => new(
         _accounts.Object,
         _hasher,
-        new Mock<ISetupKeyStore>(MockBehavior.Strict).Object,
+        new SetupKeyGate(TimeProvider.System, new SetupKeyThrottle(TimeSpan.Zero)),
         new FakeTimeProvider(Now),
         _audit);
 
@@ -38,7 +38,7 @@ public sealed class RecoveryServiceTests
     [MemberData(nameof(RefusedStates))]
     public async Task RecoveryFailure_PerformsOneVerificationWorkUnit(string state)
     {
-        var issued = _hasher.Inner.Hash(FileSetupKeyStore.Normalize(IssuedCode));
+        var issued = _hasher.Inner.Hash(CodeFormat.Normalize(IssuedCode));
         var now = Now.UtcDateTime;
         StudentRecoveryState? student = state switch
         {
@@ -65,7 +65,7 @@ public sealed class RecoveryServiceTests
     [Fact]
     public async Task Recovery_RightCode_VerifiesOnceAndCompletes()
     {
-        var issued = _hasher.Inner.Hash(FileSetupKeyStore.Normalize(IssuedCode));
+        var issued = _hasher.Inner.Hash(CodeFormat.Normalize(IssuedCode));
         var student = new StudentRecoveryState(4, "Şifresiz Öğrenci", PasswordFormat.None, issued, Now.UtcDateTime.AddHours(1), null);
         _accounts.Setup(a => a.FindStudentRecoveryAsync("Şifresiz Öğrenci", It.IsAny<CancellationToken>())).ReturnsAsync(student);
         _accounts.Setup(a => a.CompleteStudentRecoveryAsync(student, Now.UtcDateTime, It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);

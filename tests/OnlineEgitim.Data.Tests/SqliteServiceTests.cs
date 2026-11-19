@@ -395,14 +395,19 @@ public sealed class SqliteServiceTests : IAsyncLifetime
     public async Task Setup_IsNotOfferedOnceATeacherExists()
     {
         var setup = _db.Get<ISetupService>();
+        string key;
+        await using (var keys = _db.CreateContext())
+        {
+            key = await AddSetupKeyAsync(keys, _db.Clock.GetUtcNow().UtcDateTime, Ct);
+        }
 
         Assert.False(await setup.IsSetupRequiredAsync(Ct));
+        Assert.Equal(SetupStage.Completed, await setup.GetStageAsync(Ct));
         var error = await Assert.ThrowsAsync<BusinessRuleException>(
-            () => setup.CreateFirstTeacherAsync(TestServices.TestSetupKey.Key, "Yeni Öğretmen", "Kimya", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
+            () => setup.CreateFirstTeacherAsync(key, "Yeni Öğretmen", "Kimya", "Gizli.Sifre1", "Gizli.Sifre1", Ct));
         Assert.Equal(SetupService.AlreadyDone, error.Message);
-        Assert.False(await setup.IsTeacherMissingAsync(Ct));
-        Assert.Equal(0, _db.Services.SetupKey().Consumed); // an existing teacher keeps the key unused
         await using var context = _db.CreateContext();
+        Assert.Equal(0, await ConsumedSetupKeysAsync(context, Ct)); // an existing teacher keeps the key unused
         Assert.Equal(2, await context.Teachers.CountAsync(Ct));
     }
 }

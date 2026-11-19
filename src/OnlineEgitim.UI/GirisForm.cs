@@ -1,6 +1,7 @@
 using OnlineEgitim.Business.Security;
 using OnlineEgitim.Business.Services;
 using OnlineEgitim.Business.Validation;
+using OnlineEgitim.Domain.Entities;
 using OnlineEgitim.UI.Infrastructure;
 
 namespace OnlineEgitim.UI
@@ -14,7 +15,7 @@ namespace OnlineEgitim.UI
         private readonly IAuthService _auth;
         private readonly IFormFactory _forms;
         private readonly ExclusiveOperation _signIn = new();
-        private bool _offerTeacherSetup;
+        private SetupStage _stage = SetupStage.Completed;
 
         public GirisForm(IAuthService auth, IFormFactory forms)
         {
@@ -35,6 +36,7 @@ namespace OnlineEgitim.UI
             txtAd.MaxLength = InputRules.PersonNameMaxLength;
             txtSifre.MaxLength = PasswordPolicy.SignInMaxLength;
             AcceptButton = btnOgrenciGiris;
+            Stage = SetupStage.Completed;
         }
 
         /// <summary>The signed-in student or teacher, once the form closed with OK.</summary>
@@ -42,19 +44,27 @@ namespace OnlineEgitim.UI
         public UserSession? Session { get; private set; }
 
         /// <summary>
-        /// Shows the link to the first-run setup; set while no teacher exists. The setup itself still
-        /// needs the setup key.
+        /// Where the setup of the database stands. The link to the first-run setup is shown only while
+        /// students exist but no teacher (<see cref="SetupStage.FirstTeacherNeedsKey"/>), and the teacher
+        /// recovery with the setup key only while no teacher can sign in with a password. The database
+        /// decides again when the key is used.
         /// </summary>
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        internal bool OfferTeacherSetup
+        internal SetupStage Stage
         {
-            get => _offerTeacherSetup;
+            get => _stage;
             set
             {
-                _offerTeacherSetup = value;
-                lnkKurulum.Visible = value;
+                _stage = value;
+                lnkKurulum.Visible = OffersFirstTeacherSetup;
             }
         }
+
+        /// <summary>Whether the link to the first-run setup (with the setup key) is shown.</summary>
+        internal bool OffersFirstTeacherSetup => _stage == SetupStage.FirstTeacherNeedsKey;
+
+        /// <summary>Whether the recovery window offers the founder's recovery with the setup key.</summary>
+        internal bool OffersSetupKeyRecovery => _stage is SetupStage.FirstTeacherNeedsKey or SetupStage.TeacherPasswordNeedsKey;
 
         /// <summary>Information dialogs; replaced in tests so no window opens.</summary>
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
@@ -141,6 +151,7 @@ namespace OnlineEgitim.UI
             }
 
             using var recovery = _forms.Create<HesapKurtarmaForm>();
+            recovery.SetupKeyAccepted = OffersSetupKeyRecovery;
             if (recovery.ShowDialog(this) == DialogResult.OK && recovery.Session is { } session)
             {
                 Complete(session);

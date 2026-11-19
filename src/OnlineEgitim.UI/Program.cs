@@ -5,6 +5,7 @@ using OnlineEgitim.Business.Auditing;
 using OnlineEgitim.Business.Services;
 using OnlineEgitim.Data;
 using OnlineEgitim.Data.Persistence;
+using OnlineEgitim.Domain.Entities;
 using OnlineEgitim.UI.Infrastructure;
 
 namespace OnlineEgitim.UI
@@ -15,7 +16,7 @@ namespace OnlineEgitim.UI
 
         /// <summary>Application entry point and composition root.</summary>
         [STAThread]
-        private static void Main()
+        private static int Main()
         {
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException += (_, e) => ErrorReporter.Show(e.Exception);
@@ -35,7 +36,7 @@ namespace OnlineEgitim.UI
                     AppText.Title,
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
-                return;
+                return 1;
             }
 
             var options = new DataAccessOptions { SeedDemoData = AppConfiguration.IsDemoRequested(configuration) };
@@ -46,43 +47,43 @@ namespace OnlineEgitim.UI
             {
                 // No synchronization context exists yet, so blocking here cannot deadlock.
                 serviceProvider.GetRequiredService<IDatabaseInitializer>().InitializeAsync().GetAwaiter().GetResult();
-                var setup = serviceProvider.GetRequiredService<ISetupService>();
-                var setupRequired = setup.IsSetupRequiredAsync().GetAwaiter().GetResult();
-                var teacherMissing = setupRequired || setup.IsTeacherMissingAsync().GetAwaiter().GetResult();
-                session = SignIn(serviceProvider.GetRequiredService<IFormFactory>(), setupRequired, teacherMissing);
+                var stage = serviceProvider.GetRequiredService<ISetupService>().GetStageAsync().GetAwaiter().GetResult();
+                session = SignIn(serviceProvider.GetRequiredService<IFormFactory>(), stage);
             }
 #pragma warning disable CA1031 // Startup boundary: report and exit instead of crashing.
             catch (Exception ex)
 #pragma warning restore CA1031
             {
                 ErrorReporter.Show(ex);
-                return;
+                return 1;
             }
 
             if (session is null)
             {
-                return;
+                return 0;
             }
 
             var forms = serviceProvider.GetRequiredService<IFormFactory>();
             Application.Run(session.IsTeacher ? forms.Create<OgretmenForm>(session) : forms.Create<MainForm>(session));
+            return 0;
         }
 
         /// <summary>
-        /// The first-run setup on an empty database, otherwise the sign-in; a database with accounts
-        /// but no teacher offers the setup (with the setup key) from the sign-in. Returns the session,
-        /// or <see langword="null"/> when the user closed the window.
+        /// The first-run setup (without a key) on an empty database, otherwise the sign-in, which offers
+        /// the founder operations of <paramref name="stage"/>. Returns the session, or
+        /// <see langword="null"/> when the user closed the window.
         /// </summary>
-        private static UserSession? SignIn(IFormFactory forms, bool setupRequired, bool teacherMissing)
+        private static UserSession? SignIn(IFormFactory forms, SetupStage stage)
         {
-            if (setupRequired)
+            if (stage == SetupStage.EmptyDatabase)
             {
                 using var setup = forms.Create<IlkKurulumForm>();
+                setup.KeyRequired = false;
                 return setup.ShowDialog() == DialogResult.OK ? setup.Session : null;
             }
 
             using var signIn = forms.Create<GirisForm>();
-            signIn.OfferTeacherSetup = teacherMissing;
+            signIn.Stage = stage;
             return signIn.ShowDialog() == DialogResult.OK ? signIn.Session : null;
         }
 

@@ -19,6 +19,9 @@ public sealed class EgitimDbContext(DbContextOptions<EgitimDbContext> options) :
 
     public DbSet<Enrollment> Enrollments => Set<Enrollment>();
 
+    /// <summary>Setup keys (KurulumAnahtarlari); only their hashes.</summary>
+    public DbSet<SetupKey> SetupKeys => Set<SetupKey>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ArgumentNullException.ThrowIfNull(modelBuilder);

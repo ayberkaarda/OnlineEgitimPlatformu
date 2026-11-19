@@ -18,6 +18,9 @@ public sealed record StudentRecoveryState(
     DateTime? RecoveryCodeExpires,
     DateTime? LockoutEnd);
 
+/// <summary>A usable setup key as a given key is compared with it.</summary>
+public sealed record StoredSetupKey(int Id, byte[] KeyHash);
+
 /// <summary>A course with its teacher, as the lists show it.</summary>
 public sealed record CourseSummary(int Id, string Name, int TeacherId, string TeacherName, string? Topic);
 

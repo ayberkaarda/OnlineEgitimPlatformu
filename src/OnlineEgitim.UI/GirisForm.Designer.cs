@@ -143,7 +143,7 @@ namespace OnlineEgitim.UI
             this.lnkKurulum.Size = new System.Drawing.Size(232, 16);
             this.lnkKurulum.TabIndex = 12;
             this.lnkKurulum.TabStop = true;
-            this.lnkKurulum.Text = "İlk öğretmen kurulumu (kurucu anahtarı)";
+            this.lnkKurulum.Text = "İlk öğretmen kurulumu (kurulum anahtarı)";
             this.lnkKurulum.Visible = false;
             this.lnkKurulum.LinkClicked += new System.Windows.Forms.LinkLabelLinkClickedEventHandler(this.lnkKurulum_LinkClicked);
             // 

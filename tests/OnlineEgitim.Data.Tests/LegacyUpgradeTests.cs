@@ -165,27 +165,37 @@ public sealed class LegacyUpgradeTests
         // Without a code or the key nothing changes.
         await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.RecoverStudentAsync("Şifresiz Öğrenci", "ABCDE-FGHJK", "Yeni.Sifre1", "Yeni.Sifre1", ct));
         await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.RecoverTeacherAsync("YANLIS-ANAHTAR", "Diğer Öğretmen", "Yeni.Sifre1", "Yeni.Sifre1", ct));
+        await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.RecoverTeacherAsync(Convert.ToHexString(new byte[16]), "Diğer Öğretmen", "Yeni.Sifre1", "Yeni.Sifre1", ct));
         await Assert.ThrowsAsync<AccessDeniedException>(() => recovery.IssueStudentCodeAsync(TestServices.Student(2), "Şifresiz Öğrenci", ct));
         Assert.Equal(studentBefore, await database.TextAsync(Student, ct));
         Assert.Equal(teacherBefore, await database.TextAsync(Teacher, ct));
 
-        // The student is enrolled only in a course of the passwordless teacher: another teacher may not
-        // issue its code, and nothing changes.
-        var otherTeacher = await auth.SignInTeacherAsync("Eski Öğretmen", "1234", ct);
-        await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.IssueStudentCodeAsync(otherTeacher, "Eski Öğrenci", ct)); // has a password
-        await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.IssueStudentCodeAsync(otherTeacher, "Şifresiz Öğrenci", ct)); // not their student
-        Assert.Equal(studentBefore, await database.TextAsync(Student, ct));
+        // While a teacher signs in with a password ("1234"), no key is created or accepted.
+        var refusedIssue = await Assert.ThrowsAsync<SqlException>(() => database.IssueSetupKeyAsync(ct));
+        Assert.Equal(50001, refusedIssue.Number);
+        Assert.Equal(SetupStage.Completed, await provider.GetRequiredService<ISetupService>().GetStageAsync(ct));
 
-        // The founder sets the passwordless teacher's password with the setup key, once.
-        var teacher = await recovery.RecoverTeacherAsync(TestServices.TestSetupKey.Key, "Diğer Öğretmen", "Yeni.Sifre2", "Yeni.Sifre2", ct);
+        // Once no teacher has a password, the database owner's key sets the first password, once.
+        await database.ExecuteAsync("UPDATE dbo.Egitmenler SET Sifre = N'', SifreBicimi = 2 WHERE EgitmenID = 3", ct);
+        Assert.Equal(SetupStage.TeacherPasswordNeedsKey, await provider.GetRequiredService<ISetupService>().GetStageAsync(ct));
+        var key = await database.IssueSetupKeyAsync(ct);
+        Assert.Matches("^[0-9A-F]{4}(-[0-9A-F]{4}){7}$", key);
+        Assert.Equal(0, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.KurulumAnahtarlari WHERE CONVERT(nvarchar(200), AnahtarOzeti, 2) LIKE N'%' + @key + N'%'", ct, ("@key", key.Replace("-", string.Empty, StringComparison.Ordinal))));
+        var teacher = await recovery.RecoverTeacherAsync(key.ToLowerInvariant(), "Diğer Öğretmen", "Yeni.Sifre2", "Yeni.Sifre2", ct);
         Assert.Equal(5, teacher.UserId);
         Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Egitmenler WHERE EgitmenID = 5 AND SifreBicimi = 0 AND Sifre LIKE N'PBKDF2-SHA256$%'", ct));
         Assert.Equal([4], (await provider.GetRequiredService<ICourseService>().GetTeachingAsync(teacher, ct)).Select(c => c.Id));
         Assert.Equal(5, (await auth.SignInTeacherAsync("Diğer Öğretmen", "Yeni.Sifre2", ct)).UserId);
-        provider.SetupKey().Reissue();
-        await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.RecoverTeacherAsync(TestServices.TestSetupKey.Key, "Diğer Öğretmen", "Baska.Sifre1", "Baska.Sifre1", ct));
-        await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.RecoverTeacherAsync(TestServices.TestSetupKey.Key, "Eski Öğretmen", "Baska.Sifre1", "Baska.Sifre1", ct));
-        Assert.Equal(1, provider.SetupKey().Consumed);
+        await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.RecoverTeacherAsync(key, "Eski Öğretmen", "Baska.Sifre1", "Baska.Sifre1", ct));
+        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.KurulumAnahtarlari WHERE Tuketildi = 1", ct));
+        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Egitmenler WHERE EgitmenID = 3 AND SifreBicimi = 2", ct));
+
+        // A student of no course of this teacher gets no code from it, and nothing changes.
+        const string Unenrolled = "SELECT CONCAT(Sifre, N'|', SifreBicimi, N'|', KurtarmaKodu) FROM dbo.Ogrenci WHERE OgrenciID = 6";
+        var unenrolledBefore = await database.TextAsync(Unenrolled, ct);
+        await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.IssueStudentCodeAsync(teacher, "Eski Öğrenci", ct)); // has a password
+        await Assert.ThrowsAsync<BusinessRuleException>(() => recovery.IssueStudentCodeAsync(teacher, "Boş Şifreli", ct)); // enrolled in no course
+        Assert.Equal(unenrolledBefore, await database.TextAsync(Unenrolled, ct));
 
         // The student's own teacher issues a code; a wrong code is refused, the right one works once.
         var code = await recovery.IssueStudentCodeAsync(teacher, "Şifresiz Öğrenci", ct);
@@ -432,6 +442,7 @@ public sealed class LegacyUpgradeTests
             "PK_Ogrenci", "PK_Egitmenler", "PK_Dersler", "PK_Notlar", "PK_OgrenciKurslar",
             "FK_Dersler_Egitmenler", "FK_Notlar_Dersler", "FK_OgrenciKurslar_Ogrenci", "FK_OgrenciKurslar_Dersler",
             "CK_Ogrenci_BasarisizGiris", "CK_Ogrenci_SifreBicimi", "CK_Egitmenler_BasarisizGiris", "CK_Egitmenler_SifreBicimi",
+            "PK_KurulumAnahtarlari",
         ];
         foreach (var name in expected)
         {

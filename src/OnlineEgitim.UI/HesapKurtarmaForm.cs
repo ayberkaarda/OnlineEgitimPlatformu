@@ -7,14 +7,24 @@ namespace OnlineEgitim.UI
 {
     /// <summary>
     /// First password for an account the original application left without one. A student proves the
-    /// right with the single use code a teacher issued, a teacher with the setup key of this computer.
+    /// right with the single use code a teacher issued; while no teacher can sign in with a password,
+    /// the founder uses the setup key the database owner created.
     /// Closes with <see cref="DialogResult.OK"/> and <see cref="Session"/> set on success.
     /// </summary>
     public partial class HesapKurtarmaForm : Form
     {
         internal const string StudentHint =
-            "Eski sistemden şifresiz kalan öğrenci hesapları için öğretmeninizden tek kullanımlık bir kurtarma kodu isteyin. "
+            "Eski sistemden şifresiz kalan öğrenci hesapları için dersinizin öğretmeninden tek kullanımlık bir kurtarma kodu isteyin. "
             + "Kodla yeni şifrenizi belirlediğinizde hesabınız ve ders kayıtlarınız aynen korunur.";
+
+        internal const string StudentHintWithSetupKey =
+            StudentHint + " Hiçbir derse kayıtlı değilseniz kurucu, kod yerine kurulum anahtarıyla şifrenizi belirleyebilir.";
+
+        internal const string TeacherHint =
+            "Şifreyle giriş yapabilen bir öğretmen yokken, şifresi olmayan bir öğretmen hesabına kurulum anahtarıyla şifre belirlenir. "
+            + IlkKurulumForm.SetupKeySource;
+
+        private bool _setupKeyAccepted;
 
         private readonly IRecoveryService _recovery;
         private readonly ISetupService _setup;
@@ -39,7 +49,28 @@ namespace OnlineEgitim.UI
             txtSifreTekrar.MaxLength = PasswordPolicy.MaxLength;
             AcceptButton = btnKurtar;
             CancelButton = btnIptal;
-            ShowMode();
+            SetupKeyAccepted = false;
+        }
+
+        /// <summary>
+        /// Whether the founder's recovery with the setup key is offered: only while no teacher can sign
+        /// in with a password. The database decides again when the key is used.
+        /// </summary>
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        internal bool SetupKeyAccepted
+        {
+            get => _setupKeyAccepted;
+            set
+            {
+                _setupKeyAccepted = value;
+                rbOgretmen.Enabled = value;
+                if (!value)
+                {
+                    TeacherMode = false;
+                }
+
+                ShowMode();
+            }
         }
 
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
@@ -98,20 +129,19 @@ namespace OnlineEgitim.UI
 
         private void ShowMode()
         {
+            txtKod.Clear();
             if (TeacherMode)
             {
+                var prefill = _setup.GetEnvironmentKey();
                 lblKod.Text = "Kurulum Anahtarı";
-                lblAciklama.Text = "Şifresi olmayan bir öğretmen hesabına bu bilgisayarın kurulum anahtarıyla şifre belirlenir. "
-                    + (_setup.IssueSetupKey() is { } path ? "Anahtar şu dosyadadır:\n" + path : "Anahtar, EGITIM_SETUP_KEY ortam değişkeninde tanımlıdır.")
-                    + "\nAnahtar bir kez kullanılır.";
+                lblAciklama.Text = TeacherHint + (prefill.Invalid ? "\n" + IlkKurulumForm.EnvironmentKeyInvalid : string.Empty);
+                txtKod.Text = prefill.Key ?? string.Empty;
             }
             else
             {
                 lblKod.Text = "Kurtarma Kodu";
-                lblAciklama.Text = StudentHint;
+                lblAciklama.Text = _setupKeyAccepted ? StudentHintWithSetupKey : StudentHint;
             }
-
-            txtKod.Clear();
         }
 
         private void rbRol_CheckedChanged(object? sender, EventArgs e)

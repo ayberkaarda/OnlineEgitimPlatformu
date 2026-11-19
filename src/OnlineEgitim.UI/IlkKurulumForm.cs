@@ -6,15 +6,17 @@ using OnlineEgitim.UI.Infrastructure;
 namespace OnlineEgitim.UI
 {
     /// <summary>
-    /// First-run setup: opens by itself on an empty database and from the sign-in while no teacher
-    /// exists. The person installing the application proves it with the local setup key and creates
-    /// the first teacher account with a password of their own; there is no default password.
-    /// Closes with <see cref="DialogResult.OK"/> and <see cref="Session"/> set on success.
+    /// First-run setup: opens by itself on an empty database (no key needed) and from the sign-in while
+    /// students exist but no teacher, where the setup key created in the database is required. The
+    /// person installing the application creates the first teacher account with a password of their
+    /// own; there is no default password. Closes with <see cref="DialogResult.OK"/> and
+    /// <see cref="Session"/> set on success.
     /// </summary>
     public partial class IlkKurulumForm : Form
     {
         private readonly ISetupService _setup;
         private readonly ExclusiveOperation _create = new();
+        private bool _keyRequired;
 
         public IlkKurulumForm(ISetupService setup)
         {
@@ -27,7 +29,7 @@ namespace OnlineEgitim.UI
             _create.HoldClosingOf(this);
             Icon = AppAssets.Icon;
             Text = AppText.Title + " - " + Text;
-            lblAciklama.Text = SetupKeyHint(setup.IssueSetupKey());
+            KeyRequired = true;
             txtAnahtar.MaxLength = 64;
             txtAd.MaxLength = InputRules.PersonNameMaxLength;
             txtUzmanlik.MaxLength = InputRules.SpecialtyMaxLength;
@@ -39,6 +41,25 @@ namespace OnlineEgitim.UI
 
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public UserSession? Session { get; private set; }
+
+        /// <summary>
+        /// Whether the setup key field is shown: true from the sign-in (the database has students),
+        /// false on an empty database. The database decides again when the teacher is written.
+        /// </summary>
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        internal bool KeyRequired
+        {
+            get => _keyRequired;
+            set
+            {
+                _keyRequired = value;
+                label5.Visible = value;
+                txtAnahtar.Visible = value;
+                var prefill = value ? _setup.GetEnvironmentKey() : new SetupKeyPrefill(null, false);
+                txtAnahtar.Text = prefill.Key ?? string.Empty;
+                lblAciklama.Text = SetupKeyHint(value) + (prefill.Invalid ? "\n" + EnvironmentKeyInvalid : string.Empty);
+            }
+        }
 
         /// <summary>Information dialogs; replaced in tests so no window opens.</summary>
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
@@ -75,13 +96,20 @@ namespace OnlineEgitim.UI
             return session;
         }
 
-        /// <summary>Where the installer finds the setup key; the key itself is never shown.</summary>
-        internal static string SetupKeyHint(string? keyFilePath) =>
-            "Henüz bir öğretmen hesabı yok. İlk öğretmen hesabını yalnızca bu bilgisayarın kurulum anahtarıyla oluşturabilirsiniz. "
-            + (keyFilePath is null
-                ? "Anahtar, EGITIM_SETUP_KEY ortam değişkeninde tanımlıdır."
-                : "Anahtar şu dosyadadır:\n" + keyFilePath)
-            + "\nAnahtar bir kez kullanılır; şifreyi kendiniz belirlersiniz.";
+        /// <summary>Who gets the setup key and how; the key itself is never shown here.</summary>
+        internal static string SetupKeyHint(bool keyRequired) =>
+            keyRequired
+                ? "Veritabanında öğrenci hesapları var, öğretmen hesabı yok. İlk öğretmen hesabı yalnızca kurulum anahtarıyla oluşturulur. "
+                    + SetupKeySource
+                : "Veritabanı boş. İlk öğretmen hesabını oluşturun; şifreyi kendiniz belirlersiniz.";
+
+        /// <summary>Who creates the setup key; shared by the setup and the recovery window.</summary>
+        internal const string SetupKeySource =
+            "Anahtarı yalnızca veritabanı sahibi docs/issue-setup-key.sql betiğiyle üretir; 24 saat geçerlidir ve bir kez kullanılır.";
+
+        /// <summary>Shown when EGITIM_SETUP_KEY is set to something that is not a setup key.</summary>
+        internal const string EnvironmentKeyInvalid =
+            "Uyarı: EGITIM_SETUP_KEY ortam değişkeni geçerli bir kurulum anahtarı (32 onaltılık karakter) içermiyor; değişkeni düzeltin veya kaldırın.";
 
         private async void btnOlustur_Click(object? sender, EventArgs e)
         {

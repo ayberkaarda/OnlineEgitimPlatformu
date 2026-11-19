@@ -43,7 +43,7 @@ public enum AuditEvent
     /// </summary>
     AccessDenied = 9,
 
-    /// <summary>A founder operation was refused because the setup key was wrong or already used.</summary>
+    /// <summary>A founder operation was refused: the setup key was missing, wrong, expired or used.</summary>
     SetupRefused = 10,
 
     /// <summary>A teacher issued a recovery code for a student account without a password.</summary>
