@@ -76,10 +76,27 @@ public sealed class ListingTests
         var load = form.LoadAsync();
 
         Assert.True(load.IsCompletedSuccessfully && load.Result);
-        Assert.Equal("Kayıtlı Öğrenci Sayısı: 3", Find<Label>(form, "label4").Text);
-        Assert.False(Find<ListBox>(form, "lstOgrenciler").Visible);
+        Assert.Equal("3 kayıtlı öğrenci (kontenjan sınırsız)", Find<Label>(form, "lblOgrenciSayisi").Text);
+        Assert.True(FormLayout.IsHidden(Find<ListBox>(form, "lstOgrenciler")));
+        Assert.False(form.ShowsStudentNames);
         Assert.Empty(Find<ListBox>(form, "lstOgrenciler").Items.Cast<object>());
-        Assert.Equal([KursDetayForm.NotesHidden], Find<ListBox>(form, "lstbNotlar").Items.Cast<object>().Select(i => i.ToString()));
+        var notes = Find<Theming.ThemedListBox>(form, "lstbNotlar");
+        Assert.Empty(notes.Items.Cast<object>());
+        Assert.Equal(KursDetayForm.NotesHidden, notes.EmptyText);
+    });
+
+    [Fact]
+    public void Details_ShowTheSeatsOfALimitedCourse() => Run(() =>
+    {
+        var courses = new ControlledCourseService
+        {
+            Details = new CourseDetails(1, "Temel Programlama", "Döngüler", "Deniz Örnek", true, [], null, 3, 20),
+        };
+        using var form = new KursDetayForm(courses, Sessions.Student, 1);
+
+        Assert.True(form.LoadAsync().Result);
+        Assert.Equal("3 / 20 kayıtlı öğrenci", Find<Label>(form, "lblOgrenciSayisi").Text);
+        Assert.Equal(KursDetayForm.NoNotes, Find<Theming.ThemedListBox>(form, "lstbNotlar").EmptyText);
     });
 
     [Fact]
@@ -92,6 +109,7 @@ public sealed class ListingTests
         using var form = new KursDetayForm(courses, Sessions.Teacher, 1);
 
         Assert.True(form.LoadAsync().Result);
+        Assert.True(form.ShowsStudentNames);
         Assert.Equal(["Mert Deneme"], Find<ListBox>(form, "lstOgrenciler").Items.Cast<object>().Select(i => i.ToString()));
         Assert.Equal(["Not"], Find<ListBox>(form, "lstbNotlar").Items.Cast<object>().Select(i => i.ToString()));
         Assert.Equal("-", Find<Label>(form, "lblUzmanlik").Text);
